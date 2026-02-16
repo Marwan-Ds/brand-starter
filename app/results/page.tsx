@@ -133,6 +133,12 @@ const kit = {
             <p className="mt-2 text-sm text-zinc-200/80">
               Mode: {mode} • Business: {business} • Vibe: {vibe}
             </p>
+            <Link
+              href="/kits"
+              className="mt-2 inline-block text-sm text-zinc-200/80 underline-offset-4 hover:text-zinc-50 hover:underline"
+            >
+              View saved kits
+            </Link>
           </div>
 
           <div className="flex items-center gap-3">
