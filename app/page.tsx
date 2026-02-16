@@ -1,6 +1,8 @@
 "use client";
 
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -83,15 +85,36 @@ export default function SetupWizardPage() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-50">
       <div className="mx-auto max-w-5xl px-6 py-16">
-        <header className="mb-10">
-          <p className="text-sm text-zinc-400">Weekend MVP</p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight">
-            Brand Starter
-          </h1>
-          <p className="mt-3 max-w-2xl text-zinc-300">
-            A guided setup that generates a consistent social branding kit:
-            palette, font pairing, and post mock variations.
-          </p>
+        <header className="mb-10 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-zinc-400">Weekend MVP</p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight">
+              Brand Starter
+            </h1>
+            <p className="mt-3 max-w-2xl text-zinc-300">
+              A guided setup that generates a consistent social branding kit:
+              palette, font pairing, and post mock variations.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <SignedOut>
+              <Link
+                href="/sign-in"
+                className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/sign-up"
+                className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
+              >
+                Sign up
+              </Link>
+            </SignedOut>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
+          </div>
         </header>
 
         <div className="grid gap-6 md:grid-cols-[1.2fr_.8fr]">

@@ -1,6 +1,8 @@
 "use client";
 
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import * as htmlToImage from "html-to-image";
@@ -133,27 +135,46 @@ const kit = {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
-            <button
-              onClick={() => setTheme("light")}
-              className={`rounded-xl px-4 py-2 text-sm ${
-                theme === "light"
-                  ? "bg-white text-zinc-950"
-                  : "text-white/80 hover:text-white"
-              }`}
-            >
-              Light
-            </button>
-            <button
-              onClick={() => setTheme("dark")}
-              className={`rounded-xl px-4 py-2 text-sm ${
-                theme === "dark"
-                  ? "bg-white text-zinc-950"
-                  : "text-white/80 hover:text-white"
-              }`}
-            >
-              Dark
-            </button>
+          <div className="flex items-center gap-3">
+            <SignedOut>
+              <Link
+                href="/sign-in"
+                className="rounded-xl border border-white/15 bg-black/20 px-3 py-2 text-sm text-white/80 hover:text-white"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/sign-up"
+                className="rounded-xl border border-white/15 bg-black/20 px-3 py-2 text-sm text-white/80 hover:text-white"
+              >
+                Sign up
+              </Link>
+            </SignedOut>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
+              <button
+                onClick={() => setTheme("light")}
+                className={`rounded-xl px-4 py-2 text-sm ${
+                  theme === "light"
+                    ? "bg-white text-zinc-950"
+                    : "text-white/80 hover:text-white"
+                }`}
+              >
+                Light
+              </button>
+              <button
+                onClick={() => setTheme("dark")}
+                className={`rounded-xl px-4 py-2 text-sm ${
+                  theme === "dark"
+                    ? "bg-white text-zinc-950"
+                    : "text-white/80 hover:text-white"
+                }`}
+              >
+                Dark
+              </button>
+            </div>
           </div>
         </div>
         
