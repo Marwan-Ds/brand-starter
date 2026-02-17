@@ -4,6 +4,25 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 
+const GOOGLE_FONT_NAMES = new Set([
+  "Inter",
+  "Poppins",
+  "Montserrat",
+  "Roboto",
+  "Open Sans",
+  "Lato",
+  "Raleway",
+  "Nunito",
+  "Playfair Display",
+  "Merriweather",
+  "Oswald",
+]);
+
+function getGoogleFontUrl(fontName: string): string | null {
+  if (!GOOGLE_FONT_NAMES.has(fontName)) return null;
+  return `https://fonts.google.com/specimen/${fontName.replace(/ /g, "+")}`;
+}
+
 export default async function KitDetailPage(
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -41,6 +60,9 @@ export default async function KitDetailPage(
   if (!kit) {
     notFound();
   }
+
+  const headlineFontUrl = getGoogleFontUrl(kit.headlineFont);
+  const bodyFontUrl = getGoogleFontUrl(kit.bodyFont);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-50">
@@ -82,11 +104,33 @@ export default async function KitDetailPage(
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
               <p className="text-sm text-zinc-400">Headline</p>
-              <p className="mt-2 text-lg font-semibold">{kit.headlineFont}</p>
+              {headlineFontUrl ? (
+                <a
+                  href={headlineFontUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-lg font-semibold text-zinc-100 underline-offset-4 hover:underline"
+                >
+                  {kit.headlineFont}
+                </a>
+              ) : (
+                <p className="mt-2 text-lg font-semibold">{kit.headlineFont}</p>
+              )}
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
               <p className="text-sm text-zinc-400">Body</p>
-              <p className="mt-2 text-lg font-semibold">{kit.bodyFont}</p>
+              {bodyFontUrl ? (
+                <a
+                  href={bodyFontUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-block text-lg font-semibold text-zinc-100 underline-offset-4 hover:underline"
+                >
+                  {kit.bodyFont}
+                </a>
+              ) : (
+                <p className="mt-2 text-lg font-semibold">{kit.bodyFont}</p>
+              )}
             </div>
           </div>
         </section>
