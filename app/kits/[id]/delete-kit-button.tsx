@@ -6,6 +6,7 @@ import { useState } from "react";
 export function DeleteKitButton({ id }: { id: string }) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   async function handleDelete() {
     if (isDeleting) return;
@@ -15,6 +16,7 @@ export function DeleteKitButton({ id }: { id: string }) {
     );
     if (!confirmed) return;
 
+    setErrorMsg("");
     setIsDeleting(true);
 
     try {
@@ -22,25 +24,29 @@ export function DeleteKitButton({ id }: { id: string }) {
 
       if (!res.ok) {
         setIsDeleting(false);
-        window.alert("Could not delete this kit.");
+        setErrorMsg("Could not delete this kit.");
         return;
       }
 
       router.push("/kits");
+      router.refresh();
     } catch {
       setIsDeleting(false);
-      window.alert("Could not delete this kit.");
+      setErrorMsg("Could not delete this kit.");
     }
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleDelete}
-      disabled={isDeleting}
-      className="rounded-xl border border-red-900/80 bg-red-950/40 px-3 py-2 text-sm text-red-200 transition hover:border-red-700 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {isDeleting ? "Deleting..." : "Delete"}
-    </button>
+    <div className="flex flex-col items-end gap-2">
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={isDeleting}
+        className="rounded-xl border border-red-900/80 bg-red-950/40 px-3 py-2 text-sm text-red-200 transition hover:border-red-700 hover:text-red-100 disabled:cursor-not-allowed disabled:border-red-900/40 disabled:text-red-300/70 disabled:hover:border-red-900/40"
+      >
+        {isDeleting ? "Deleting..." : "Delete"}
+      </button>
+      {errorMsg ? <p className="text-xs text-red-300">{errorMsg}</p> : null}
+    </div>
   );
 }
