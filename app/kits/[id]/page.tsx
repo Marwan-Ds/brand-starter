@@ -4,6 +4,26 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 import { DeleteKitButton } from "./delete-kit-button";
+import { ColorSwatch } from "./color-swatch";
+
+const GOOGLE_FONT_NAMES = new Set([
+  "Inter",
+  "Poppins",
+  "Montserrat",
+  "Roboto",
+  "Open Sans",
+  "Lato",
+  "Raleway",
+  "Nunito",
+  "Playfair Display",
+  "Merriweather",
+  "Oswald",
+]);
+
+function getGoogleFontUrl(fontName: string): string | null {
+  if (!GOOGLE_FONT_NAMES.has(fontName)) return null;
+  return `https://fonts.google.com/specimen/${fontName.replace(/ /g, "+")}`;
+}
 
 export default async function KitDetailPage(
   { params }: { params: Promise<{ id: string }> }
@@ -43,6 +63,9 @@ export default async function KitDetailPage(
     notFound();
   }
 
+  const headlineFontUrl = getGoogleFontUrl(kit.headlineFont);
+  const bodyFontUrl = getGoogleFontUrl(kit.bodyFont);
+
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-50">
       <div className="mx-auto max-w-5xl px-6 py-14">
@@ -70,15 +93,15 @@ export default async function KitDetailPage(
         <section className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold">Palette</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <ColorCard label="Primary" hex={kit.primary} />
-            <ColorCard label="Secondary" hex={kit.secondary} />
-            <ColorCard label="Accent" hex={kit.accent} />
+            <ColorSwatch label="Primary" hex={kit.primary} />
+            <ColorSwatch label="Secondary" hex={kit.secondary} />
+            <ColorSwatch label="Accent" hex={kit.accent} />
           </div>
 
           <h2 className="mt-8 text-lg font-semibold">Neutrals</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-4">
             {kit.neutrals.map((hex) => (
-              <ColorCard key={hex} label="Neutral" hex={hex} />
+              <ColorSwatch key={hex} label="Neutral" hex={hex} />
             ))}
           </div>
 
@@ -86,28 +109,39 @@ export default async function KitDetailPage(
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
               <p className="text-sm text-zinc-400">Headline</p>
-              <p className="mt-2 text-lg font-semibold">{kit.headlineFont}</p>
+              {headlineFontUrl ? (
+                <a
+                  href={headlineFontUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open ${kit.headlineFont} on Google Fonts`}
+                  className="mt-2 inline-block text-lg font-semibold text-zinc-100 underline-offset-4 hover:text-white hover:underline"
+                >
+                  {kit.headlineFont}
+                </a>
+              ) : (
+                <p className="mt-2 text-lg font-semibold">{kit.headlineFont}</p>
+              )}
             </div>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
               <p className="text-sm text-zinc-400">Body</p>
-              <p className="mt-2 text-lg font-semibold">{kit.bodyFont}</p>
+              {bodyFontUrl ? (
+                <a
+                  href={bodyFontUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Open ${kit.bodyFont} on Google Fonts`}
+                  className="mt-2 inline-block text-lg font-semibold text-zinc-100 underline-offset-4 hover:text-white hover:underline"
+                >
+                  {kit.bodyFont}
+                </a>
+              ) : (
+                <p className="mt-2 text-lg font-semibold">{kit.bodyFont}</p>
+              )}
             </div>
           </div>
         </section>
       </div>
     </main>
-  );
-}
-
-function ColorCard({ label, hex }: { label: string; hex: string }) {
-  return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
-      <p className="text-sm text-zinc-400">{label}</p>
-      <div
-        className="mt-3 h-16 rounded-xl border border-zinc-800"
-        style={{ backgroundColor: hex }}
-      />
-      <p className="mt-3 text-sm text-zinc-200">{hex}</p>
-    </div>
   );
 }
