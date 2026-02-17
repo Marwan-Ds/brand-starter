@@ -4,13 +4,16 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 
-export default async function KitDetailPage({ params }: { params: { id: string } }) {
+export default async function KitDetailPage(
+  { params }: { params: Promise<{ id: string }> }
+) {
   const { userId } = await auth();
   if (!userId) {
     redirect("/sign-in");
   }
 
-  const id = params?.id ?? "";
+  const resolvedParams = await params;
+  const id = resolvedParams?.id ?? "";
   if (!id) {
     return (
       <main className="min-h-screen bg-zinc-950 text-zinc-50">
