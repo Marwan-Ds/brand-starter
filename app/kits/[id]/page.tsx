@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
+import { ColorSwatch } from "./color-swatch";
 
 export default async function KitDetailPage(
   { params }: { params: Promise<{ id: string }> }
@@ -66,15 +67,15 @@ export default async function KitDetailPage(
         <section className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
           <h2 className="text-lg font-semibold">Palette</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <ColorCard label="Primary" hex={kit.primary} />
-            <ColorCard label="Secondary" hex={kit.secondary} />
-            <ColorCard label="Accent" hex={kit.accent} />
+            <ColorSwatch label="Primary" hex={kit.primary} />
+            <ColorSwatch label="Secondary" hex={kit.secondary} />
+            <ColorSwatch label="Accent" hex={kit.accent} />
           </div>
 
           <h2 className="mt-8 text-lg font-semibold">Neutrals</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-4">
             {kit.neutrals.map((hex) => (
-              <ColorCard key={hex} label="Neutral" hex={hex} />
+              <ColorSwatch key={hex} label="Neutral" hex={hex} />
             ))}
           </div>
 
@@ -92,18 +93,5 @@ export default async function KitDetailPage(
         </section>
       </div>
     </main>
-  );
-}
-
-function ColorCard({ label, hex }: { label: string; hex: string }) {
-  return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
-      <p className="text-sm text-zinc-400">{label}</p>
-      <div
-        className="mt-3 h-16 rounded-xl border border-zinc-800"
-        style={{ backgroundColor: hex }}
-      />
-      <p className="mt-3 text-sm text-zinc-200">{hex}</p>
-    </div>
   );
 }
