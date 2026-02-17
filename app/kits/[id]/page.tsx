@@ -36,15 +36,13 @@ function readBrandKit(value: unknown): BrandKit | null {
   };
 }
 
-export default async function KitDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function KitDetailPage({ params }: { params: { id: string } }) {
   const { userId } = await auth();
   if (!userId) {
     redirect("/sign-in");
   }
+
+  if (!params?.id) notFound();
 
   const record = await prisma.brandKit.findUnique({
     where: { id: params.id },
