@@ -72,8 +72,16 @@ export default async function KitsPage() {
         </div>
 
         {kits.length === 0 ? (
-          <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-300">
-            No saved kits yet.
+          <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+            <p className="text-sm text-zinc-300">
+              You have not saved any brand kits yet. Create one to see it here.
+            </p>
+            <Link
+              href="/"
+              className="mt-4 inline-flex rounded-xl bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
+            >
+              New kit
+            </Link>
           </div>
         ) : (
           <div className="mt-8 grid gap-4">
