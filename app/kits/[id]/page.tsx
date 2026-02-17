@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
+import { DeleteKitButton } from "./delete-kit-button";
 
 export default async function KitDetailPage(
   { params }: { params: Promise<{ id: string }> }
@@ -58,9 +59,12 @@ export default async function KitDetailPage(
               {record.mode} • {record.business} • {record.vibe}
             </p>
           </div>
-          <p className="text-sm text-zinc-400">
-            {new Date(record.createdAt).toLocaleString()}
-          </p>
+          <div className="flex flex-col items-end gap-2">
+            <p className="text-sm text-zinc-400">
+              {new Date(record.createdAt).toLocaleString()}
+            </p>
+            <DeleteKitButton id={record.id} />
+          </div>
         </div>
 
         <section className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
