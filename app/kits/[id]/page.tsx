@@ -43,9 +43,10 @@ export default async function KitDetailPage({ params }: { params: { id: string }
   }
 
   if (!params?.id) notFound();
+  const id = params.id;
 
   const record = await prisma.brandKit.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: {
       id: true,
       userId: true,
@@ -57,7 +58,13 @@ export default async function KitDetailPage({ params }: { params: { id: string }
     },
   });
 
-  if (!record || record.userId !== userId) {
+  console.log("kits detail lookup", { id, userId });
+
+  if (!record) {
+    notFound();
+  }
+
+  if (record.userId !== userId) {
     notFound();
   }
 
