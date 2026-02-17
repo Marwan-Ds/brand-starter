@@ -36,7 +36,19 @@ cp .env.example .env.local
 OPENAI_API_KEY=your_real_key_here
 ```
 
-4. Start the dev server:
+4. Set your database URL:
+
+```bash
+DATABASE_URL=your_supabase_postgres_url
+```
+
+5. Run Prisma migration:
+
+```bash
+npx prisma migrate dev --name add_brand_kits
+```
+
+6. Start the dev server:
 
 ```bash
 npm run dev
