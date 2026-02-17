@@ -83,7 +83,7 @@ export default async function KitsPage() {
                 <Link
                   key={kit.id}
                   href={`/kits/${kit.id}`}
-                  className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 transition hover:border-zinc-600"
+                  className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 transition hover:border-zinc-600 hover:bg-zinc-900/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
