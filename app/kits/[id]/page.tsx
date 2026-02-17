@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 
@@ -10,8 +10,16 @@ export default async function KitDetailPage({ params }: { params: { id: string }
     redirect("/sign-in");
   }
 
-  if (!params?.id) notFound();
-  const id = params.id;
+  const id = params?.id ?? "";
+  if (!id) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-zinc-50">
+        <div className="mx-auto max-w-5xl px-6 py-14">
+          <p className="text-sm">missing id</p>
+        </div>
+      </main>
+    );
+  }
 
   const record = await prisma.brandKit.findUnique({
     where: { id },
@@ -28,22 +36,33 @@ export default async function KitDetailPage({ params }: { params: { id: string }
 
   console.log("kits detail lookup", { id, userId });
 
-  if (!record) {
-    notFound();
-  }
+  const found = Boolean(record);
+  const userMatch = Boolean(record && record.userId === userId);
+  const kit = record ? readBrandKit(record.kitJson) : null;
+  const valid = Boolean(kit);
 
-  if (record.userId !== userId) {
-    notFound();
-  }
-
-  const kit = readBrandKit(record.kitJson);
-  if (!kit) {
-    notFound();
+  if (!record || record.userId !== userId || !kit) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-zinc-50">
+        <div className="mx-auto max-w-5xl px-6 py-14">
+          <p className="text-sm">id: {id}</p>
+          <p className="text-sm">found: {String(found)}</p>
+          <p className="text-sm">userMatch: {String(userMatch)}</p>
+          <p className="text-sm">valid: {String(valid)}</p>
+        </div>
+      </main>
+    );
   }
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-50">
       <div className="mx-auto max-w-5xl px-6 py-14">
+        <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+          <p className="text-sm">id: {id}</p>
+          <p className="text-sm">found: {String(found)}</p>
+          <p className="text-sm">userMatch: {String(userMatch)}</p>
+          <p className="text-sm">valid: {String(valid)}</p>
+        </div>
         <div className="flex items-center justify-between gap-4">
           <div>
             <Link
