@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 import { DeleteKitButton } from "./delete-kit-button";
+import { BrandIdentityCard, type BrandProfile } from "./brand-identity-card";
 import { ColorSwatch } from "./color-swatch";
 import { AppNav } from "@/components/app-nav";
 
@@ -24,6 +25,46 @@ const GOOGLE_FONT_NAMES = new Set([
 function getGoogleFontUrl(fontName: string): string | null {
   if (!GOOGLE_FONT_NAMES.has(fontName)) return null;
   return `https://fonts.google.com/specimen/${fontName.replace(/ /g, "+")}`;
+}
+
+const DEFAULT_PROFILE: BrandProfile = {
+  name: "",
+  description: "",
+  audience: "",
+  tone: {
+    bold: 50,
+    playful: 50,
+    formal: 50,
+    emotional: 50,
+  },
+};
+
+function clampTone(value: unknown, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function readProfile(value: unknown): BrandProfile {
+  if (!value || typeof value !== "object") return DEFAULT_PROFILE;
+  const candidate = value as Partial<BrandProfile> & {
+    tone?: Partial<BrandProfile["tone"]>;
+  };
+
+  return {
+    name: typeof candidate.name === "string" ? candidate.name : "",
+    description:
+      typeof candidate.description === "string" ? candidate.description : "",
+    audience: typeof candidate.audience === "string" ? candidate.audience : "",
+    tone: {
+      bold: clampTone(candidate.tone?.bold, DEFAULT_PROFILE.tone.bold),
+      playful: clampTone(candidate.tone?.playful, DEFAULT_PROFILE.tone.playful),
+      formal: clampTone(candidate.tone?.formal, DEFAULT_PROFILE.tone.formal),
+      emotional: clampTone(
+        candidate.tone?.emotional,
+        DEFAULT_PROFILE.tone.emotional
+      ),
+    },
+  };
 }
 
 export default async function KitDetailPage(
@@ -66,6 +107,9 @@ export default async function KitDetailPage(
 
   const headlineFontUrl = getGoogleFontUrl(kit.headlineFont);
   const bodyFontUrl = getGoogleFontUrl(kit.bodyFont);
+  const profile = readProfile(
+    (record.kitJson as { profile?: unknown } | null | undefined)?.profile
+  );
 
   return (
     <>
@@ -142,8 +186,12 @@ export default async function KitDetailPage(
                 <p className="mt-2 text-lg font-semibold">{kit.bodyFont}</p>
               )}
             </div>
-          </div>
+            </div>
           </section>
+
+          <div className="mt-8">
+            <BrandIdentityCard id={record.id} initialProfile={profile} />
+          </div>
         </div>
       </main>
     </>
