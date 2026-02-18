@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 import { DeleteKitButton } from "./delete-kit-button";
 import { ColorSwatch } from "./color-swatch";
+import { AppNav } from "@/components/app-nav";
 
 const GOOGLE_FONT_NAMES = new Set([
   "Inter",
@@ -67,36 +68,38 @@ export default async function KitDetailPage(
   const bodyFontUrl = getGoogleFontUrl(kit.bodyFont);
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-50">
-      <div className="mx-auto max-w-5xl px-6 py-14">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Link
-              href="/kits"
-              className="text-sm text-zinc-400 hover:text-zinc-200"
-            >
-              ← Back to saved kits
-            </Link>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Brand kit</h1>
-            <p className="mt-2 text-sm text-zinc-400 capitalize">
-              {record.mode} • {record.business} • {record.vibe}
-            </p>
+    <>
+      <AppNav />
+      <main className="min-h-screen bg-zinc-950 text-zinc-50">
+        <div className="mx-auto max-w-5xl px-6 py-14">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Link
+                href="/kits"
+                className="text-sm text-zinc-400 hover:text-zinc-200"
+              >
+                ← Back to saved kits
+              </Link>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight">Brand kit</h1>
+              <p className="mt-2 text-sm text-zinc-400 capitalize">
+                {record.mode} • {record.business} • {record.vibe}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <p className="text-sm text-zinc-400">
+                {new Date(record.createdAt).toLocaleString()}
+              </p>
+              <DeleteKitButton id={record.id} />
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <p className="text-sm text-zinc-400">
-              {new Date(record.createdAt).toLocaleString()}
-            </p>
-            <DeleteKitButton id={record.id} />
-          </div>
-        </div>
 
-        <section className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
-          <h2 className="text-lg font-semibold">Palette</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            <ColorSwatch label="Primary" hex={kit.primary} />
-            <ColorSwatch label="Secondary" hex={kit.secondary} />
-            <ColorSwatch label="Accent" hex={kit.accent} />
-          </div>
+          <section className="mt-8 rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
+            <h2 className="text-lg font-semibold">Palette</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              <ColorSwatch label="Primary" hex={kit.primary} />
+              <ColorSwatch label="Secondary" hex={kit.secondary} />
+              <ColorSwatch label="Accent" hex={kit.accent} />
+            </div>
 
           <h2 className="mt-8 text-lg font-semibold">Neutrals</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-4">
@@ -140,8 +143,9 @@ export default async function KitDetailPage(
               )}
             </div>
           </div>
-        </section>
-      </div>
-    </main>
+          </section>
+        </div>
+      </main>
+    </>
   );
 }
