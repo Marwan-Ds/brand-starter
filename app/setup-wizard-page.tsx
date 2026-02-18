@@ -1,6 +1,6 @@
 "use client";
 
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { SignedOut } from "@clerk/nextjs";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -111,9 +111,6 @@ export default function SetupWizardPage() {
                 Sign up
               </Link>
             </SignedOut>
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
           </div>
         </header>
 
