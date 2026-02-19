@@ -181,6 +181,9 @@ export default function SetupWizardPage() {
     PERSONALITY_OPTIONS[1],
   ]);
   const [avoid, setAvoid] = useState<string[]>([]);
+  const [visualToneMaxReached, setVisualToneMaxReached] = useState(false);
+  const [personalityMaxReached, setPersonalityMaxReached] = useState(false);
+  const [avoidMaxReached, setAvoidMaxReached] = useState(false);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
 
   const canGenerate = useMemo(() => {
@@ -220,6 +223,51 @@ export default function SetupWizardPage() {
     setStep(2);
     setShowDraftBanner(true);
   }, []);
+
+  useEffect(() => {
+    if (!visualToneMaxReached) return;
+    const timeout = window.setTimeout(() => setVisualToneMaxReached(false), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [visualToneMaxReached]);
+
+  useEffect(() => {
+    if (!personalityMaxReached) return;
+    const timeout = window.setTimeout(() => setPersonalityMaxReached(false), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [personalityMaxReached]);
+
+  useEffect(() => {
+    if (!avoidMaxReached) return;
+    const timeout = window.setTimeout(() => setAvoidMaxReached(false), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [avoidMaxReached]);
+
+  function handleVisualToneChipClick(item: string) {
+    const isSelected = visualTone.includes(item);
+    if (!isSelected && visualTone.length >= 4) {
+      setVisualToneMaxReached(true);
+      return;
+    }
+    setVisualTone((current) => toggleLimited(current, item, 4, 2));
+  }
+
+  function handlePersonalityChipClick(item: string) {
+    const isSelected = personality.includes(item);
+    if (!isSelected && personality.length >= 5) {
+      setPersonalityMaxReached(true);
+      return;
+    }
+    setPersonality((current) => toggleLimited(current, item, 5, 2));
+  }
+
+  function handleAvoidChipClick(item: string) {
+    const isSelected = avoid.includes(item);
+    if (!isSelected && avoid.length >= 3) {
+      setAvoidMaxReached(true);
+      return;
+    }
+    setAvoid((current) => toggleLimited(current, item, 3));
+  }
 
   async function generate() {
     const draft: BrandDraft = {
@@ -501,6 +549,9 @@ export default function SetupWizardPage() {
                         <p className="text-sm text-zinc-300">Visual tone</p>
                         <p className="text-xs text-zinc-500">
                           {visualTone.length}/4 · Pick 2–4
+                          {visualToneMaxReached ? (
+                            <span className="text-zinc-400"> · Max reached</span>
+                          ) : null}
                         </p>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -508,9 +559,7 @@ export default function SetupWizardPage() {
                           <button
                             key={item}
                             type="button"
-                            onClick={() =>
-                              setVisualTone((current) => toggleLimited(current, item, 4, 2))
-                            }
+                            onClick={() => handleVisualToneChipClick(item)}
                             className={`rounded-full border px-3 py-1.5 text-sm transition ${
                               visualTone.includes(item)
                                 ? "border-zinc-200 bg-zinc-50 text-zinc-950"
@@ -528,6 +577,9 @@ export default function SetupWizardPage() {
                         <p className="text-sm text-zinc-300">Personality traits</p>
                         <p className="text-xs text-zinc-500">
                           {personality.length}/5 · Pick 2–5
+                          {personalityMaxReached ? (
+                            <span className="text-zinc-400"> · Max reached</span>
+                          ) : null}
                         </p>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -535,9 +587,7 @@ export default function SetupWizardPage() {
                           <button
                             key={item}
                             type="button"
-                            onClick={() =>
-                              setPersonality((current) => toggleLimited(current, item, 5, 2))
-                            }
+                            onClick={() => handlePersonalityChipClick(item)}
                             className={`rounded-full border px-3 py-1.5 text-sm transition ${
                               personality.includes(item)
                                 ? "border-zinc-200 bg-zinc-50 text-zinc-950"
@@ -555,6 +605,9 @@ export default function SetupWizardPage() {
                         <p className="text-sm text-zinc-300">Avoid traits</p>
                         <p className="text-xs text-zinc-500">
                           {avoid.length}/3 · Up to 3
+                          {avoidMaxReached ? (
+                            <span className="text-zinc-400"> · Max reached</span>
+                          ) : null}
                         </p>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
@@ -562,7 +615,7 @@ export default function SetupWizardPage() {
                           <button
                             key={item}
                             type="button"
-                            onClick={() => setAvoid((current) => toggleLimited(current, item, 3))}
+                            onClick={() => handleAvoidChipClick(item)}
                             className={`rounded-full border px-3 py-1.5 text-sm transition ${
                               avoid.includes(item)
                                 ? "border-zinc-200 bg-zinc-50 text-zinc-950"
