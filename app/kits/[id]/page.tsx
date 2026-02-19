@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 import { DeleteKitButton } from "./delete-kit-button";
 import { BrandIdentityCard, type BrandProfile } from "./brand-identity-card";
+import { BrandVoiceCard, type BrandVoiceAi } from "./brand-voice-card";
 import { ColorSwatch } from "./color-swatch";
 import { AppNav } from "@/components/app-nav";
 
@@ -67,6 +68,53 @@ function readProfile(value: unknown): BrandProfile {
   };
 }
 
+function isStringArray(value: unknown, min: number, max: number) {
+  return (
+    Array.isArray(value) &&
+    value.length >= min &&
+    value.length <= max &&
+    value.every((entry) => typeof entry === "string")
+  );
+}
+
+function readVoiceAi(value: unknown): BrandVoiceAi | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as {
+    taglines?: unknown;
+    voiceSummary?: unknown;
+    guidelines?: unknown;
+    do?: unknown;
+    dont?: unknown;
+    sampleLines?: unknown;
+  };
+
+  if (
+    !isStringArray(candidate.taglines, 3, 3) ||
+    typeof candidate.voiceSummary !== "string" ||
+    !isStringArray(candidate.guidelines, 3, 6) ||
+    !isStringArray(candidate.do, 3, 6) ||
+    !isStringArray(candidate.dont, 3, 6) ||
+    !isStringArray(candidate.sampleLines, 3, 3)
+  ) {
+    return null;
+  }
+
+  const taglines = candidate.taglines as string[];
+  const guidelines = candidate.guidelines as string[];
+  const doList = candidate.do as string[];
+  const dontList = candidate.dont as string[];
+  const sampleLines = candidate.sampleLines as string[];
+
+  return {
+    taglines: [taglines[0], taglines[1], taglines[2]],
+    voiceSummary: candidate.voiceSummary,
+    guidelines,
+    do: doList,
+    dont: dontList,
+    sampleLines: [sampleLines[0], sampleLines[1], sampleLines[2]],
+  };
+}
+
 export default async function KitDetailPage(
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -109,6 +157,9 @@ export default async function KitDetailPage(
   const bodyFontUrl = getGoogleFontUrl(kit.bodyFont);
   const profile = readProfile(
     (record.kitJson as { profile?: unknown } | null | undefined)?.profile
+  );
+  const voiceAi = readVoiceAi(
+    (record.kitJson as { voiceAi?: unknown } | null | undefined)?.voiceAi
   );
 
   return (
@@ -191,6 +242,10 @@ export default async function KitDetailPage(
 
           <div className="mt-8">
             <BrandIdentityCard id={record.id} initialProfile={profile} />
+          </div>
+
+          <div className="mt-8">
+            <BrandVoiceCard id={record.id} initialVoiceAi={voiceAi} />
           </div>
         </div>
       </main>
