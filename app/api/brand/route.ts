@@ -103,7 +103,7 @@ export async function POST(req: Request) {
       guidance,
     });
 
-    let savedId: string | undefined;
+    let savedId: string | null = null;
     let parsedKit: BrandKit | null = null;
 
     try {
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       savedId = saved.id;
     }
 
-    return Response.json({ text, savedId });
+    return Response.json({ text, savedId: savedId ?? null });
   } catch (err: unknown) {
     console.error("API /api/brand error:", err);
     const message = err instanceof Error ? err.message : "Unknown error";

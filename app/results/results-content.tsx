@@ -137,6 +137,11 @@ export function ResultsContent() {
   const [status, setStatus] = useState<GenerationStatus>("loading");
   const [isGenerating, setIsGenerating] = useState(false);
   const [kit, setKit] = useState<BrandKit | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [finalizeStatus, setFinalizeStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [finalizeError, setFinalizeError] = useState("");
   const [stage, setStage] = useState<RevealStage>("colors");
   const [revealRun, setRevealRun] = useState(0);
   const [apiText, setApiText] = useState<string>("");
@@ -182,6 +187,9 @@ export function ResultsContent() {
       try {
         setIsGenerating(true);
         setKit(null);
+        setSavedId(null);
+        setFinalizeStatus("idle");
+        setFinalizeError("");
         setApiText("");
 
         const res = await fetch("/api/brand", {
@@ -191,9 +199,9 @@ export function ResultsContent() {
         });
 
         const raw = await res.text();
-        let data: { text?: string; error?: string } | null = null;
+        let data: { text?: string; error?: string; savedId?: unknown } | null = null;
         try {
-          data = JSON.parse(raw) as { text?: string; error?: string };
+          data = JSON.parse(raw) as { text?: string; error?: string; savedId?: unknown };
         } catch {
           throw new Error(raw || "Could not parse API response.");
         }
@@ -211,10 +219,15 @@ export function ResultsContent() {
         if (!parsedKit) {
           throw new Error("Generated brand kit payload was invalid.");
         }
+        const nextSavedId =
+          typeof data?.savedId === "string" && data.savedId.trim().length > 0
+            ? data.savedId
+            : null;
 
         if (canceled) return;
         setApiText(data?.text ?? "");
         setKit(parsedKit);
+        setSavedId(nextSavedId);
         setIsGenerating(false);
         try {
           window.localStorage.removeItem("brand_draft_v1");
@@ -254,6 +267,28 @@ export function ResultsContent() {
 
   const canReveal = (target: RevealStage) =>
     REVEAL_STAGE_ORDER[stage] >= REVEAL_STAGE_ORDER[target];
+
+  async function handleFinalizeCore() {
+    if (!savedId || finalizeStatus === "loading") return;
+
+    setFinalizeStatus("loading");
+    setFinalizeError("");
+
+    try {
+      const res = await fetch(`/api/kits/${savedId}/core`, { method: "POST" });
+      if (!res.ok) {
+        setFinalizeStatus("error");
+        setFinalizeError("Could not finalize brand core.");
+        return;
+      }
+
+      setFinalizeStatus("success");
+      router.refresh();
+    } catch {
+      setFinalizeStatus("error");
+      setFinalizeError("Could not finalize brand core.");
+    }
+  }
 
   const audience =
     business === "saas"
@@ -361,6 +396,12 @@ export function ResultsContent() {
             >
               View saved kits
             </Link>
+            {status === "success" && !savedId ? (
+              <p className="mt-2 text-xs text-zinc-300">
+                <SignedOut>Sign in to save and finalize.</SignedOut>
+                <SignedIn>Couldn&apos;t save this kit.</SignedIn>
+              </p>
+            ) : null}
           </div>
 
           <div className="flex items-center gap-3">
@@ -420,6 +461,47 @@ export function ResultsContent() {
             </pre>
           </div>
         )}
+
+        {status === "success" && savedId ? (
+          <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Finalize Brand Core (AI)</p>
+                <p className="mt-1 text-xs text-zinc-300">
+                  Generates identity + rules in your saved kit.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleFinalizeCore}
+                disabled={finalizeStatus === "loading"}
+                className="rounded-xl border border-white/15 bg-black/20 px-3 py-2 text-sm text-white/90 hover:text-white disabled:opacity-60"
+              >
+                {finalizeStatus === "loading"
+                  ? "Generating..."
+                  : finalizeStatus === "success"
+                    ? "Done"
+                    : "Finalize Brand Core (AI)"}
+              </button>
+            </div>
+            {finalizeStatus === "success" ? (
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-300">
+                <span>Brand Core updated in your saved kit.</span>
+                <Link
+                  href={`/kits/${savedId}`}
+                  className="underline-offset-4 hover:text-zinc-100 hover:underline"
+                >
+                  Open saved kit
+                </Link>
+              </div>
+            ) : null}
+            {finalizeStatus === "error" ? (
+              <p className="mt-2 text-xs text-red-300">
+                {finalizeError || "Could not finalize brand core."}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
 
         <div className="mt-10">
