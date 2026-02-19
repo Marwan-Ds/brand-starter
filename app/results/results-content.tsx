@@ -1,10 +1,10 @@
 "use client";
 
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import * as htmlToImage from "html-to-image";
 
 type BrandKit = {
@@ -14,6 +14,15 @@ type BrandKit = {
   accent: string;
   headlineFont: string;
   bodyFont: string;
+};
+
+type RevealStage = "colors" | "fonts" | "profile" | "voice";
+
+const REVEAL_STAGE_ORDER: Record<RevealStage, number> = {
+  colors: 0,
+  fonts: 1,
+  profile: 2,
+  voice: 3,
 };
 
 function clampHex(hex: string, fallback: string) {
@@ -71,6 +80,7 @@ function generateBrandKit(params: {
 export function ResultsContent() {
   const sp = useSearchParams();
   const router = useRouter();
+  const prefersReducedMotion = useReducedMotion();
 
   const mode = sp.get("mode") ?? "new";
   const business = sp.get("business") ?? "saas";
@@ -79,37 +89,91 @@ export function ResultsContent() {
   const secondary = sp.get("secondary") ?? undefined;
   const ai = sp.get("ai") ?? "";
   const aiKit = useMemo(() => {
-  if (!ai) return null;
-  try {
-    return JSON.parse(ai) as Partial<BrandKit>;
-  } catch {
-    return null;
-  }
-}, [ai]);
-
+    if (!ai) return null;
+    try {
+      return JSON.parse(ai) as Partial<BrandKit>;
+    } catch {
+      return null;
+    }
+  }, [ai]);
 
   const baseKit = useMemo(
-  () => generateBrandKit({ mode, business, vibe, primary, secondary }),
-  [mode, business, vibe, primary, secondary]
-);
+    () => generateBrandKit({ mode, business, vibe, primary, secondary }),
+    [mode, business, vibe, primary, secondary]
+  );
 
-const kit = {
-  ...baseKit,
-  ...(aiKit ?? {}),
-};
+  const kit = {
+    ...baseKit,
+    ...(aiKit ?? {}),
+  };
 
-
-  const [phase, setPhase] = useState<"loading" | "skeleton" | "ready">("loading");
+  const [stage, setStage] = useState<RevealStage>("colors");
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [revealRun, setRevealRun] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase("skeleton"), 700);
-    const t2 = setTimeout(() => setPhase("ready"), 1600);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    setDataLoaded(false);
+    setStage("colors");
+
+    timers.push(
+      setTimeout(() => {
+        setDataLoaded(true);
+        setStage("colors");
+
+        if (prefersReducedMotion) {
+          setStage("voice");
+          return;
+        }
+
+        timers.push(setTimeout(() => setStage("fonts"), 380));
+        timers.push(setTimeout(() => setStage("profile"), 760));
+        timers.push(setTimeout(() => setStage("voice"), 1160));
+      }, 80)
+    );
+
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      timers.forEach((timer) => clearTimeout(timer));
     };
-  }, []);
+  }, [ai, aiKit, prefersReducedMotion, revealRun]);
+
+  const canReveal = (target: RevealStage) =>
+    dataLoaded && REVEAL_STAGE_ORDER[stage] >= REVEAL_STAGE_ORDER[target];
+
+  const audience =
+    business === "saas"
+      ? "Product and growth teams"
+      : business === "ecom"
+        ? "Digitally savvy shoppers"
+        : business === "agency"
+          ? "Marketing leaders and clients"
+          : "Audience-first creators";
+
+  const profileSummary =
+    vibe === "minimal"
+      ? "Clear, focused identity optimized for consistency."
+      : vibe === "bold"
+        ? "Confident identity with high-contrast visual choices."
+        : vibe === "playful"
+          ? "Expressive identity that stays approachable."
+          : "Premium identity with refined, editorial direction.";
+
+  const voiceSummary =
+    vibe === "minimal"
+      ? "Concise and calm with practical clarity."
+      : vibe === "bold"
+        ? "Direct and confident with strong calls to action."
+        : vibe === "playful"
+          ? "Friendly and energetic with clear benefit framing."
+          : "Polished and authoritative with premium tone.";
+
+  const voiceLines = [
+    `Built for ${audience.toLowerCase()}.`,
+    `A ${vibe} voice that stays consistent across posts.`,
+    `Clear message, confident delivery, repeatable format.`,
+  ];
 
   const bg =
     theme === "dark"
@@ -195,94 +259,138 @@ const kit = {
 
 
         <div className="mt-10">
-          <AnimatePresence mode="wait">
-            {phase !== "ready" ? (
-              <motion.div
-                key="wip"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.25 }}
-                className="rounded-3xl border border-white/10 bg-black/25 p-6"
-              >
-                <div className="flex items-center gap-3">
-                  <motion.div
-                    className="h-3 w-3 rounded-full bg-white"
-                    animate={{ scale: [1, 1.6, 1] }}
-                    transition={{ duration: 1.2, repeat: Infinity }}
-                  />
-                  <p className="text-sm text-white/80">
-                    {phase === "loading" ? "Working on it…" : "Finalizing your kit…"}
-                  </p>
-                </div>
-
-                <div className="mt-6 grid gap-4 md:grid-cols-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-24 rounded-2xl bg-white/10" />
-                  ))}
-                </div>
-
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="h-20 rounded-2xl bg-white/10" />
-                  <div className="h-20 rounded-2xl bg-white/10" />
-                </div>
-
-                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div key={i} className="h-28 rounded-2xl bg-white/10" />
-                  ))}
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="ready"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25 }}
-              >
-                <section className="rounded-3xl border border-white/10 bg-black/25 p-6">
-                  <h2 className="text-lg font-semibold">Palette</h2>
+          <section className="rounded-3xl border border-white/10 bg-black/25 p-6">
+            <StagedSection
+              show={canReveal("colors")}
+              reducedMotion={Boolean(prefersReducedMotion)}
+              skeleton={
+                <div>
+                  <div className="h-5 w-24 animate-pulse rounded bg-white/10" />
                   <div className="mt-4 grid gap-4 md:grid-cols-3">
-                    <ColorCard label="Primary" hex={kit.primary} big />
-                    <ColorCard label="Secondary" hex={kit.secondary} />
-                    <ColorCard label="Accent" hex={kit.accent} />
-                  </div>
-
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <FontCard title="Font Pairing A" headline={kit.headlineFont} body={kit.bodyFont} />
-                    <FontCard title="Font Pairing B" headline="Inter" body="DM Sans" />
-                  </div>
-
-                  <div className="mt-8 flex items-center justify-between gap-4">
-                    <h2 className="text-lg font-semibold">Post previews</h2>
-                    <span className="text-sm text-white/70">
-                      Templates (MVP) • Brand applied
-                    </span>
-                  </div>
-
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <PostMock key={i} kit={kit} variant={i} theme={theme} />
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10"
+                      />
                     ))}
                   </div>
+                </div>
+              }
+            >
+              <h2 className="text-lg font-semibold">Palette</h2>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <ColorCard label="Primary" hex={kit.primary} big />
+                <ColorCard label="Secondary" hex={kit.secondary} />
+                <ColorCard label="Accent" hex={kit.accent} />
+              </div>
+            </StagedSection>
 
-                  <button
-                    onClick={() => {
-                      setPhase("loading");
-                      setTimeout(() => setPhase("skeleton"), 500);
-                      setTimeout(() => setPhase("ready"), 1300);
-                    }}
-                    className="mt-8 w-full rounded-2xl bg-white px-5 py-4 text-base font-semibold text-zinc-950 hover:bg-zinc-50"
-                  >
-                    ✨ Regenerate
-                  </button>
-                </section>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            <StagedSection
+              show={canReveal("fonts")}
+              reducedMotion={Boolean(prefersReducedMotion)}
+              skeleton={
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
+                  <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
+                </div>
+              }
+            >
+              <h2 className="mt-8 text-lg font-semibold">Fonts</h2>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <FontCard title="Font Pairing A" headline={kit.headlineFont} body={kit.bodyFont} />
+                <FontCard title="Font Pairing B" headline="Inter" body="DM Sans" />
+              </div>
+            </StagedSection>
+
+            <StagedSection
+              show={canReveal("profile")}
+              reducedMotion={Boolean(prefersReducedMotion)}
+              skeleton={
+                <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="h-5 w-28 animate-pulse rounded bg-white/10" />
+                  <div className="mt-4 h-4 w-full animate-pulse rounded bg-white/10" />
+                  <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-white/10" />
+                </div>
+              }
+            >
+              <h2 className="mt-8 text-lg font-semibold">Brand profile</h2>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-sm text-white/70">Audience</p>
+                <p className="mt-1 text-sm">{audience}</p>
+                <p className="mt-4 text-sm text-white/70">Direction</p>
+                <p className="mt-1 text-sm">{profileSummary}</p>
+              </div>
+            </StagedSection>
+
+            <StagedSection
+              show={canReveal("voice")}
+              reducedMotion={Boolean(prefersReducedMotion)}
+              skeleton={
+                <div className="mt-6">
+                  <div className="h-5 w-32 animate-pulse rounded bg-white/10" />
+                  <div className="mt-4 h-4 w-full animate-pulse rounded bg-white/10" />
+                  <div className="mt-2 h-4 w-5/6 animate-pulse rounded bg-white/10" />
+                </div>
+              }
+            >
+              <h2 className="mt-8 text-lg font-semibold">Brand voice</h2>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <p className="text-sm text-white/80">{voiceSummary}</p>
+                <ul className="mt-3 space-y-1 text-sm text-white/75">
+                  {voiceLines.map((line) => (
+                    <li key={line}>• {line}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="mt-8 flex items-center justify-between gap-4">
+                <h2 className="text-lg font-semibold">Post previews</h2>
+                <span className="text-sm text-white/70">
+                  Templates (MVP) • Brand applied
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <PostMock key={i} kit={kit} variant={i} theme={theme} />
+                ))}
+              </div>
+            </StagedSection>
+
+            <button
+              onClick={() => setRevealRun((current) => current + 1)}
+              className="mt-8 w-full rounded-2xl bg-white px-5 py-4 text-base font-semibold text-zinc-950 hover:bg-zinc-50"
+            >
+              ✨ Regenerate
+            </button>
+          </section>
         </div>
       </div>
     </main>
+  );
+}
+
+function StagedSection({
+  show,
+  reducedMotion,
+  skeleton,
+  children,
+}: {
+  show: boolean;
+  reducedMotion: boolean;
+  skeleton: ReactNode;
+  children: ReactNode;
+}) {
+  if (!show) return <>{skeleton}</>;
+
+  return (
+    <motion.div
+      initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reducedMotion ? 0 : 0.2 }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
