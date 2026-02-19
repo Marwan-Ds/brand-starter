@@ -3,7 +3,7 @@
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import * as htmlToImage from "html-to-image";
 
 type BrandKit = {
@@ -16,6 +16,24 @@ type BrandKit = {
 };
 
 type RevealStage = "colors" | "fonts" | "profile" | "voice";
+type GenerationStatus = "loading" | "success" | "missing" | "error";
+
+type GeneratePayload = {
+  mode: string;
+  business: string;
+  vibe: string;
+  primary?: string;
+  secondary?: string;
+  guidance?: {
+    audiencePrimary: string;
+    audienceRefinement?: string;
+    visualTone: string[];
+    personality: string[];
+    avoid: string[];
+  };
+};
+
+const BRAND_GENERATE_PAYLOAD_KEY = "brand_generate_payload_v1";
 
 const REVEAL_STAGE_ORDER: Record<RevealStage, number> = {
   colors: 0,
@@ -23,6 +41,60 @@ const REVEAL_STAGE_ORDER: Record<RevealStage, number> = {
   profile: 2,
   voice: 3,
 };
+
+function readGeneratePayload(value: unknown): GeneratePayload | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<GeneratePayload>;
+
+  if (
+    typeof candidate.mode !== "string" ||
+    typeof candidate.business !== "string" ||
+    typeof candidate.vibe !== "string"
+  ) {
+    return null;
+  }
+
+  const payload: GeneratePayload = {
+    mode: candidate.mode,
+    business: candidate.business,
+    vibe: candidate.vibe,
+    ...(typeof candidate.primary === "string" ? { primary: candidate.primary } : {}),
+    ...(typeof candidate.secondary === "string"
+      ? { secondary: candidate.secondary }
+      : {}),
+  };
+
+  if (
+    candidate.guidance &&
+    typeof candidate.guidance === "object" &&
+    !Array.isArray(candidate.guidance) &&
+    typeof candidate.guidance.audiencePrimary === "string"
+  ) {
+    payload.guidance = {
+      audiencePrimary: candidate.guidance.audiencePrimary,
+      ...(typeof candidate.guidance.audienceRefinement === "string"
+        ? { audienceRefinement: candidate.guidance.audienceRefinement }
+        : {}),
+      visualTone: Array.isArray(candidate.guidance.visualTone)
+        ? candidate.guidance.visualTone.filter(
+            (entry): entry is string => typeof entry === "string"
+          )
+        : [],
+      personality: Array.isArray(candidate.guidance.personality)
+        ? candidate.guidance.personality.filter(
+            (entry): entry is string => typeof entry === "string"
+          )
+        : [],
+      avoid: Array.isArray(candidate.guidance.avoid)
+        ? candidate.guidance.avoid.filter(
+            (entry): entry is string => typeof entry === "string"
+          )
+        : [],
+    };
+  }
+
+  return payload;
+}
 
 function clampHex(hex: string, fallback: string) {
   return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : fallback;
@@ -77,23 +149,28 @@ function generateBrandKit(params: {
 }
 
 export function ResultsContent() {
-  const sp = useSearchParams();
   const router = useRouter();
+  const requestStartedRef = useRef(false);
 
-  const mode = sp.get("mode") ?? "new";
-  const business = sp.get("business") ?? "saas";
-  const vibe = sp.get("vibe") ?? "minimal";
-  const primary = sp.get("primary") ?? undefined;
-  const secondary = sp.get("secondary") ?? undefined;
-  const ai = sp.get("ai") ?? "";
+  const [payload, setPayload] = useState<GeneratePayload | null>(null);
+  const [status, setStatus] = useState<GenerationStatus>("loading");
+  const [apiText, setApiText] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const mode = payload?.mode ?? "new";
+  const business = payload?.business ?? "saas";
+  const vibe = payload?.vibe ?? "minimal";
+  const primary = payload?.primary;
+  const secondary = payload?.secondary;
+
   const aiKit = useMemo(() => {
-    if (!ai) return null;
+    if (!apiText) return null;
     try {
-      return JSON.parse(ai) as Partial<BrandKit>;
+      return JSON.parse(apiText) as Partial<BrandKit>;
     } catch {
       return null;
     }
-  }, [ai]);
+  }, [apiText]);
 
   const baseKit = useMemo(
     () => generateBrandKit({ mode, business, vibe, primary, secondary }),
@@ -111,6 +188,79 @@ export function ResultsContent() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.sessionStorage.getItem(BRAND_GENERATE_PAYLOAD_KEY);
+      if (!raw) {
+        setStatus("missing");
+        return;
+      }
+
+      const parsed = readGeneratePayload(JSON.parse(raw));
+      window.sessionStorage.removeItem(BRAND_GENERATE_PAYLOAD_KEY);
+
+      if (!parsed) {
+        setStatus("missing");
+        return;
+      }
+
+      setPayload(parsed);
+      setStatus("loading");
+    } catch {
+      setStatus("missing");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!payload || requestStartedRef.current) return;
+    requestStartedRef.current = true;
+
+    let canceled = false;
+
+    const run = async () => {
+      try {
+        const res = await fetch("/api/brand", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const raw = await res.text();
+        let data: { text?: string; error?: string } | null = null;
+        try {
+          data = JSON.parse(raw) as { text?: string; error?: string };
+        } catch {
+          throw new Error(raw || "Could not parse API response.");
+        }
+
+        if (!res.ok) {
+          throw new Error(data?.error ?? "Could not generate brand kit.");
+        }
+
+        if (canceled) return;
+        setApiText(data?.text ?? "");
+        try {
+          window.localStorage.removeItem("brand_draft_v1");
+        } catch {}
+        setStatus("success");
+      } catch (error: unknown) {
+        if (canceled) return;
+        const message =
+          error instanceof Error ? error.message : "Could not generate brand kit.";
+        setErrorMessage(message);
+        setStatus("error");
+      }
+    };
+
+    run();
+    return () => {
+      canceled = true;
+    };
+  }, [payload]);
+
+  useEffect(() => {
+    if (!payload) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     setDataLoaded(false);
@@ -129,7 +279,7 @@ export function ResultsContent() {
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
     };
-  }, [ai, aiKit, revealRun]);
+  }, [payload, revealRun]);
 
   const canReveal = (target: RevealStage) =>
     dataLoaded && REVEAL_STAGE_ORDER[stage] >= REVEAL_STAGE_ORDER[target];
@@ -171,6 +321,48 @@ export function ResultsContent() {
     theme === "dark"
       ? `linear-gradient(120deg, ${kit.secondary} 0%, #000 60%, ${kit.primary} 140%)`
       : `linear-gradient(120deg, ${kit.neutrals[0]} 0%, #fff 60%, ${kit.primary} 160%)`;
+
+  if (status === "missing") {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-zinc-50">
+        <div className="mx-auto max-w-3xl px-6 py-16">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+            <h1 className="text-2xl font-semibold tracking-tight">No pending generation</h1>
+            <p className="mt-2 text-sm text-zinc-300">
+              Start a new brand setup to generate results.
+            </p>
+            <Link
+              href="/new"
+              className="mt-5 inline-flex rounded-xl bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
+            >
+              Go to setup
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-zinc-50">
+        <div className="mx-auto max-w-3xl px-6 py-16">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+            <h1 className="text-2xl font-semibold tracking-tight">Generation failed</h1>
+            <p className="mt-2 text-sm text-zinc-300">
+              {errorMessage || "Could not generate your brand kit right now."}
+            </p>
+            <Link
+              href="/new"
+              className="mt-5 inline-flex rounded-xl bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
+            >
+              Back to setup
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen text-zinc-50" style={{ background: bg }}>
@@ -240,14 +432,20 @@ export function ResultsContent() {
           </div>
         </div>
         
-        {ai && (
-  <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4">
-    <p className="text-sm font-semibold">AI output (MVP)</p>
-    <pre className="mt-2 whitespace-pre-wrap text-xs text-white/80">
-      {ai}
-    </pre>
-  </div>
-)}
+        {status === "loading" && (
+          <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4">
+            <p className="text-sm text-white/80">Generating your brand kit…</p>
+          </div>
+        )}
+
+        {apiText && (
+          <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4">
+            <p className="text-sm font-semibold">AI output (MVP)</p>
+            <pre className="mt-2 whitespace-pre-wrap text-xs text-white/80">
+              {apiText}
+            </pre>
+          </div>
+        )}
 
 
         <div className="mt-10">

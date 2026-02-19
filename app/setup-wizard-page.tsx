@@ -48,6 +48,7 @@ const AVOID_OPTIONS = [
 ] as const;
 
 const BRAND_DRAFT_STORAGE_KEY = "brand_draft_v1";
+const BRAND_GENERATE_PAYLOAD_KEY = "brand_generate_payload_v1";
 
 type BrandDraft = {
   mode: BrandMode;
@@ -145,13 +146,6 @@ function safeWriteDraft(draft: BrandDraft) {
   } catch {}
 }
 
-function safeClearDraft() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(BRAND_DRAFT_STORAGE_KEY);
-  } catch {}
-}
-
 function toggleLimited(list: string[], value: string, max: number, min = 0) {
   const hasValue = list.includes(value);
   if (hasValue) {
@@ -170,8 +164,6 @@ export default function SetupWizardPage() {
   const [mode, setMode] = useState<BrandMode>("new");
   const [business, setBusiness] = useState<BusinessType>("saas");
   const [vibe, setVibe] = useState<Vibe>("minimal");
-
-  const [isGenerating, setIsGenerating] = useState(false);
 
   const [existingPrimary, setExistingPrimary] = useState("#3B82F6");
   const [existingSecondary, setExistingSecondary] = useState("#10B981");
@@ -242,60 +234,35 @@ export default function SetupWizardPage() {
       return;
     }
 
-    setIsGenerating(true);
+    const payload = {
+      mode,
+      business,
+      vibe,
+      ...(mode === "existing"
+        ? { primary: existingPrimary, secondary: existingSecondary }
+        : {}),
+      guidance: {
+        audiencePrimary,
+        ...(audienceRefinement.trim()
+          ? { audienceRefinement: audienceRefinement.trim() }
+          : {}),
+        visualTone,
+        personality,
+        avoid,
+      },
+    };
 
     try {
-      const res = await fetch("/api/brand", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode,
-          business,
-          vibe,
-          ...(mode === "existing"
-            ? { primary: existingPrimary, secondary: existingSecondary }
-            : {}),
-          guidance: {
-            audiencePrimary,
-            ...(audienceRefinement.trim()
-              ? { audienceRefinement: audienceRefinement.trim() }
-              : {}),
-            visualTone,
-            personality,
-            avoid,
-          },
-        }),
-      });
-
-      const raw = await res.text();
-      let data: { text?: string; error?: string } | null = null;
-
-      try {
-        data = JSON.parse(raw) as { text?: string; error?: string };
-      } catch {
-        alert(raw || "API returned empty response (check terminal logs).");
-        return;
-      }
-
-      if (!res.ok) {
-        alert(data?.error ?? "AI request failed");
-        return;
-      }
-
-      safeClearDraft();
-      const params = new URLSearchParams({
-        mode,
-        business,
-        vibe,
-        primary: existingPrimary,
-        secondary: existingSecondary,
-        ai: data?.text ?? "",
-      });
-
-      router.push(`/results?${params.toString()}`);
-    } finally {
-      setIsGenerating(false);
+      window.sessionStorage.setItem(
+        BRAND_GENERATE_PAYLOAD_KEY,
+        JSON.stringify(payload)
+      );
+    } catch {
+      alert("Could not prepare generation. Please try again.");
+      return;
     }
+
+    router.push("/results?src=wizard");
   }
 
   return (
@@ -621,10 +588,10 @@ export default function SetupWizardPage() {
                 <button
                   type="button"
                   onClick={generate}
-                  disabled={!canFinalize || isGenerating}
+                  disabled={!canFinalize}
                   className="rounded-2xl bg-zinc-50 px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isGenerating ? "Finalizing…" : "Finalize Brand"}
+                  Finalize Brand
                 </button>
               )}
             </div>
