@@ -10,77 +10,148 @@ type BrandMode = "new" | "existing";
 type BusinessType = "saas" | "ecom" | "agency" | "creator";
 type Vibe = "minimal" | "bold" | "playful" | "premium";
 
+const AUDIENCE_PRIMARY_OPTIONS = [
+  "Founders and operators",
+  "Marketing teams",
+  "Small business owners",
+  "Enterprise buyers",
+  "Creators and influencers",
+  "Students and learners",
+] as const;
+
+const VISUAL_TONE_OPTIONS = [
+  "Clean",
+  "Technical",
+  "Editorial",
+  "Warm",
+  "Confident",
+  "Premium",
+] as const;
+
+const PERSONALITY_OPTIONS = [
+  "Trustworthy",
+  "Bold",
+  "Playful",
+  "Calm",
+  "Direct",
+  "Friendly",
+  "Expert",
+] as const;
+
+const AVOID_OPTIONS = [
+  "Too corporate",
+  "Too loud",
+  "Too playful",
+  "Too generic",
+  "Too trendy",
+  "Too formal",
+] as const;
+
+function toggleLimited(list: string[], value: string, max: number, min = 0) {
+  const hasValue = list.includes(value);
+  if (hasValue) {
+    if (list.length <= min) return list;
+    return list.filter((item) => item !== value);
+  }
+  if (list.length >= max) return list;
+  return [...list, value];
+}
+
 export default function SetupWizardPage() {
   const router = useRouter();
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2>(1);
   const [mode, setMode] = useState<BrandMode>("new");
   const [business, setBusiness] = useState<BusinessType>("saas");
   const [vibe, setVibe] = useState<Vibe>("minimal");
-  
+
   const [isGenerating, setIsGenerating] = useState(false);
 
   const [existingPrimary, setExistingPrimary] = useState("#3B82F6");
   const [existingSecondary, setExistingSecondary] = useState("#10B981");
+
+  const [audiencePrimary, setAudiencePrimary] = useState<string>(
+    AUDIENCE_PRIMARY_OPTIONS[0]
+  );
+  const [audienceRefinement, setAudienceRefinement] = useState("");
+  const [visualTone, setVisualTone] = useState<string[]>([
+    VISUAL_TONE_OPTIONS[0],
+    VISUAL_TONE_OPTIONS[1],
+  ]);
+  const [personality, setPersonality] = useState<string[]>([
+    PERSONALITY_OPTIONS[0],
+    PERSONALITY_OPTIONS[1],
+  ]);
+  const [avoid, setAvoid] = useState<string[]>([]);
 
   const canGenerate = useMemo(() => {
     if (mode === "new") return true;
     return Boolean(existingPrimary && existingSecondary);
   }, [mode, existingPrimary, existingSecondary]);
 
-  function next() {
-    setStep((s) => (s === 1 ? 2 : s === 2 ? 3 : 3));
-  }
-  function back() {
-    setStep((s) => (s === 3 ? 2 : s === 2 ? 1 : 1));
-  }
+  const canFinalize =
+    canGenerate &&
+    visualTone.length >= 2 &&
+    visualTone.length <= 4 &&
+    personality.length >= 2 &&
+    personality.length <= 5 &&
+    avoid.length <= 3;
 
   async function generate() {
     setIsGenerating(true);
 
-  const res = await fetch("/api/brand", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-   body: JSON.stringify({
-  mode,
-  business,
-  vibe,
-  ...(mode === "existing"
-    ? { primary: existingPrimary, secondary: existingSecondary }
-    : {}),
-}),
+    try {
+      const res = await fetch("/api/brand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          business,
+          vibe,
+          ...(mode === "existing"
+            ? { primary: existingPrimary, secondary: existingSecondary }
+            : {}),
+          guidance: {
+            audiencePrimary,
+            ...(audienceRefinement.trim()
+              ? { audienceRefinement: audienceRefinement.trim() }
+              : {}),
+            visualTone,
+            personality,
+            avoid,
+          },
+        }),
+      });
 
-  });
+      const raw = await res.text();
+      let data: { text?: string; error?: string } | null = null;
 
-  const raw = await res.text(); // <-- read as text first (safe)
-  let data: any = null;
+      try {
+        data = JSON.parse(raw) as { text?: string; error?: string };
+      } catch {
+        alert(raw || "API returned empty response (check terminal logs).");
+        return;
+      }
 
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    // If server returned HTML / empty, show raw
-    alert(raw || "API returned empty response (check terminal logs).");
-    return;
+      if (!res.ok) {
+        alert(data?.error ?? "AI request failed");
+        return;
+      }
+
+      const params = new URLSearchParams({
+        mode,
+        business,
+        vibe,
+        primary: existingPrimary,
+        secondary: existingSecondary,
+        ai: data?.text ?? "",
+      });
+
+      router.push(`/results?${params.toString()}`);
+    } finally {
+      setIsGenerating(false);
+    }
   }
-
-  if (!res.ok) {
-    alert(data?.error ?? "AI request failed");
-    return;
-  }
-
-  const params = new URLSearchParams({
-    mode,
-    business,
-    vibe,
-    primary: existingPrimary,
-    secondary: existingSecondary,
-    ai: data.text ?? "",
-  });
-
-  router.push(`/results?${params.toString()}`);
-  setIsGenerating(false);
-}
-
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-50">
@@ -118,7 +189,7 @@ export default function SetupWizardPage() {
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
             <div className="flex items-center justify-between">
               <p className="text-sm text-zinc-300">Setup</p>
-              <p className="text-sm text-zinc-400">Step {step} / 3</p>
+              <p className="text-sm text-zinc-400">Step {step} / 2</p>
             </div>
 
             <div className="mt-6">
@@ -131,13 +202,13 @@ export default function SetupWizardPage() {
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.25 }}
                   >
-                    <h2 className="text-xl font-semibold">Start point</h2>
+                    <h2 className="text-xl font-semibold">Core setup</h2>
                     <p className="mt-2 text-sm text-zinc-300">
-                      Are we generating a new branding direction, or using an
-                      existing one?
+                      Pick your baseline direction, business type, and vibe.
                     </p>
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <h3 className="mt-6 text-sm font-semibold text-zinc-200">Start point</h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <button
                         onClick={() => setMode("new")}
                         className={`rounded-xl border px-4 py-4 text-left transition ${
@@ -175,9 +246,7 @@ export default function SetupWizardPage() {
                             <input
                               type="color"
                               value={existingPrimary}
-                              onChange={(e) =>
-                                setExistingPrimary(e.target.value)
-                              }
+                              onChange={(e) => setExistingPrimary(e.target.value)}
                               className="h-9 w-12 cursor-pointer rounded-lg border border-zinc-700 bg-transparent"
                             />
                             Primary
@@ -186,9 +255,7 @@ export default function SetupWizardPage() {
                             <input
                               type="color"
                               value={existingSecondary}
-                              onChange={(e) =>
-                                setExistingSecondary(e.target.value)
-                              }
+                              onChange={(e) => setExistingSecondary(e.target.value)}
                               className="h-9 w-12 cursor-pointer rounded-lg border border-zinc-700 bg-transparent"
                             />
                             Secondary
@@ -196,23 +263,9 @@ export default function SetupWizardPage() {
                         </div>
                       </div>
                     )}
-                  </motion.div>
-                )}
 
-                {step === 2 && (
-                  <motion.div
-                    key="step2"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.25 }}
-                  >
-                    <h2 className="text-xl font-semibold">Business type</h2>
-                    <p className="mt-2 text-sm text-zinc-300">
-                      Helps pick sensible defaults (still deterministic in MVP).
-                    </p>
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <h3 className="mt-6 text-sm font-semibold text-zinc-200">Business type</h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       {(
                         [
                           ["saas", "SaaS"],
@@ -237,23 +290,9 @@ export default function SetupWizardPage() {
                         </button>
                       ))}
                     </div>
-                  </motion.div>
-                )}
 
-                {step === 3 && (
-                  <motion.div
-                    key="step3"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.25 }}
-                  >
-                    <h2 className="text-xl font-semibold">Vibe / tone</h2>
-                    <p className="mt-2 text-sm text-zinc-300">
-                      This controls palette direction + typography pairing.
-                    </p>
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <h3 className="mt-6 text-sm font-semibold text-zinc-200">Vibe / tone</h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       {(
                         [
                           ["minimal", "Minimal"],
@@ -278,41 +317,158 @@ export default function SetupWizardPage() {
                         </button>
                       ))}
                     </div>
+                  </motion.div>
+                )}
 
-                    <AnimatePresence>
-                      {canGenerate && (
-                        <motion.button
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          transition={{ duration: 0.25 }}
-                          onClick={generate}
-                          className="mt-7 w-full rounded-2xl bg-zinc-50 px-5 py-4 text-base font-semibold text-zinc-950 hover:bg-white"
-                        >
-                          {isGenerating ? "Generating…" : "✨ Generate branding kit"}
-                        </motion.button>
-                      )}
-                    </AnimatePresence>
+                {step === 2 && (
+                  <motion.div
+                    key="step2"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    <h2 className="text-xl font-semibold">Refine your direction</h2>
+                    <p className="mt-2 text-sm text-zinc-300">
+                      Add audience and brand traits. We will only generate after
+                      you finalize.
+                    </p>
+
+                    <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                      <label className="text-sm text-zinc-300" htmlFor="audience-primary">
+                        Audience primary
+                      </label>
+                      <select
+                        id="audience-primary"
+                        value={audiencePrimary}
+                        onChange={(e) => setAudiencePrimary(e.target.value)}
+                        className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                      >
+                        {AUDIENCE_PRIMARY_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+
+                      <label className="mt-4 block text-sm text-zinc-300" htmlFor="audience-refinement">
+                        Audience refinement (optional)
+                      </label>
+                      <input
+                        id="audience-refinement"
+                        type="text"
+                        value={audienceRefinement}
+                        onChange={(e) => setAudienceRefinement(e.target.value)}
+                        placeholder="e.g. B2B SaaS founders in early stage"
+                        className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+                      />
+                    </div>
+
+                    <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                      <p className="text-sm text-zinc-300">Visual tone (pick 2-4)</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {VISUAL_TONE_OPTIONS.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() =>
+                              setVisualTone((current) => toggleLimited(current, item, 4, 2))
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                              visualTone.includes(item)
+                                ? "border-zinc-200 bg-zinc-50 text-zinc-950"
+                                : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-zinc-500"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                      <p className="text-sm text-zinc-300">Personality traits (pick 2-5)</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {PERSONALITY_OPTIONS.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() =>
+                              setPersonality((current) => toggleLimited(current, item, 5, 2))
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                              personality.includes(item)
+                                ? "border-zinc-200 bg-zinc-50 text-zinc-950"
+                                : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-zinc-500"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                      <p className="text-sm text-zinc-300">Avoid traits (max 3)</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {AVOID_OPTIONS.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => setAvoid((current) => toggleLimited(current, item, 3))}
+                            className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                              avoid.includes(item)
+                                ? "border-zinc-200 bg-zinc-50 text-zinc-950"
+                                : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-zinc-500"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {!canFinalize && (
+                      <p className="mt-4 text-sm text-zinc-400">
+                        Pick 2-4 visual tones and 2-5 personality traits to finalize.
+                      </p>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
             <div className="mt-8 flex items-center justify-between">
-              <button
-                onClick={back}
-                disabled={step === 1}
-                className="rounded-xl border border-zinc-800 px-4 py-2 text-sm text-zinc-200 disabled:opacity-40"
-              >
-                Back
-              </button>
-              <button
-                onClick={next}
-                disabled={step === 3}
-                className="rounded-xl border border-zinc-800 px-4 py-2 text-sm text-zinc-200 disabled:opacity-40"
-              >
-                Next
-              </button>
+              {step === 2 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="rounded-xl border border-zinc-800 px-4 py-2 text-sm text-zinc-200"
+                >
+                  Back
+                </button>
+              ) : (
+                <span />
+              )}
+
+              {step === 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="rounded-xl border border-zinc-800 px-4 py-2 text-sm text-zinc-200"
+                >
+                  Continue
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={generate}
+                  disabled={!canFinalize || isGenerating}
+                  className="rounded-2xl bg-zinc-50 px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isGenerating ? "Finalizing…" : "Finalize Brand"}
+                </button>
+              )}
             </div>
           </section>
 
