@@ -4,7 +4,6 @@ import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { motion, useReducedMotion } from "framer-motion";
 import * as htmlToImage from "html-to-image";
 
 type BrandKit = {
@@ -80,7 +79,6 @@ function generateBrandKit(params: {
 export function ResultsContent() {
   const sp = useSearchParams();
   const router = useRouter();
-  const prefersReducedMotion = useReducedMotion();
 
   const mode = sp.get("mode") ?? "new";
   const business = sp.get("business") ?? "saas";
@@ -122,22 +120,16 @@ export function ResultsContent() {
       setTimeout(() => {
         setDataLoaded(true);
         setStage("colors");
-
-        if (prefersReducedMotion) {
-          setStage("voice");
-          return;
-        }
-
-        timers.push(setTimeout(() => setStage("fonts"), 380));
-        timers.push(setTimeout(() => setStage("profile"), 760));
-        timers.push(setTimeout(() => setStage("voice"), 1160));
-      }, 80)
+        timers.push(setTimeout(() => setStage("fonts"), 350));
+        timers.push(setTimeout(() => setStage("profile"), 750));
+        timers.push(setTimeout(() => setStage("voice"), 1150));
+      }, 100)
     );
 
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
     };
-  }, [ai, aiKit, prefersReducedMotion, revealRun]);
+  }, [ai, aiKit, revealRun]);
 
   const canReveal = (target: RevealStage) =>
     dataLoaded && REVEAL_STAGE_ORDER[stage] >= REVEAL_STAGE_ORDER[target];
@@ -261,8 +253,8 @@ export function ResultsContent() {
         <div className="mt-10">
           <section className="rounded-3xl border border-white/10 bg-black/25 p-6">
             <StagedSection
+              key={`colors-${revealRun}`}
               show={canReveal("colors")}
-              reducedMotion={Boolean(prefersReducedMotion)}
               skeleton={
                 <div>
                   <div className="h-5 w-24 animate-pulse rounded bg-white/10" />
@@ -286,8 +278,8 @@ export function ResultsContent() {
             </StagedSection>
 
             <StagedSection
+              key={`fonts-${revealRun}`}
               show={canReveal("fonts")}
-              reducedMotion={Boolean(prefersReducedMotion)}
               skeleton={
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
@@ -303,8 +295,8 @@ export function ResultsContent() {
             </StagedSection>
 
             <StagedSection
+              key={`profile-${revealRun}`}
               show={canReveal("profile")}
-              reducedMotion={Boolean(prefersReducedMotion)}
               skeleton={
                 <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="h-5 w-28 animate-pulse rounded bg-white/10" />
@@ -323,8 +315,8 @@ export function ResultsContent() {
             </StagedSection>
 
             <StagedSection
+              key={`voice-${revealRun}`}
               show={canReveal("voice")}
-              reducedMotion={Boolean(prefersReducedMotion)}
               skeleton={
                 <div className="mt-6">
                   <div className="h-5 w-32 animate-pulse rounded bg-white/10" />
@@ -372,25 +364,37 @@ export function ResultsContent() {
 
 function StagedSection({
   show,
-  reducedMotion,
   skeleton,
   children,
 }: {
   show: boolean;
-  reducedMotion: boolean;
   skeleton: ReactNode;
   children: ReactNode;
 }) {
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => {
+    if (!show) {
+      setEntered(false);
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(frame);
+  }, [show]);
+
   if (!show) return <>{skeleton}</>;
 
   return (
-    <motion.div
-      initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reducedMotion ? 0 : 0.2 }}
+    <div
+      className={`transition-all duration-300 motion-reduce:transition-none ${
+        entered
+          ? "translate-y-0 opacity-100"
+          : "translate-y-1 opacity-0 motion-reduce:translate-y-0"
+      }`}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
 
