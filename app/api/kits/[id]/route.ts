@@ -12,6 +12,13 @@ type BrandProfile = {
   tone: Record<ToneKey, number>;
 };
 
+type BrandKitMeta = {
+  version: number;
+  updatedAt?: string;
+  profileUpdatedAt?: string;
+  voiceUpdatedAt?: string;
+};
+
 const DEFAULT_PROFILE: BrandProfile = {
   name: "",
   description: "",
@@ -51,6 +58,37 @@ function normalizeProfile(value: unknown): BrandProfile | null {
   };
 }
 
+function readMeta(value: unknown): BrandKitMeta {
+  if (!value || typeof value !== "object") {
+    return { version: 1 };
+  }
+
+  const candidate = value as {
+    version?: unknown;
+    updatedAt?: unknown;
+    profileUpdatedAt?: unknown;
+    voiceUpdatedAt?: unknown;
+  };
+
+  const version =
+    typeof candidate.version === "number" &&
+    Number.isFinite(candidate.version) &&
+    candidate.version > 0
+      ? Math.floor(candidate.version)
+      : 1;
+
+  return {
+    version,
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : undefined,
+    profileUpdatedAt:
+      typeof candidate.profileUpdatedAt === "string"
+        ? candidate.profileUpdatedAt
+        : undefined,
+    voiceUpdatedAt:
+      typeof candidate.voiceUpdatedAt === "string" ? candidate.voiceUpdatedAt : undefined,
+  };
+}
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -86,6 +124,9 @@ export async function PATCH(
       record.kitJson && typeof record.kitJson === "object" && !Array.isArray(record.kitJson)
         ? (record.kitJson as Record<string, any>)
         : {};
+    const nowIso = new Date().toISOString();
+    const currentMeta = readMeta(existingKitJson.meta);
+    const nextVersion = (currentMeta.version ?? 1) + 1;
 
     await prisma.brandKit.update({
       where: { id },
@@ -93,6 +134,12 @@ export async function PATCH(
         kitJson: {
           ...existingKitJson,
           profile,
+          meta: {
+            ...currentMeta,
+            version: nextVersion,
+            updatedAt: nowIso,
+            profileUpdatedAt: nowIso,
+          },
         },
       },
     });

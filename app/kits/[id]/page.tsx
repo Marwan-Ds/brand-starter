@@ -161,6 +161,15 @@ export default async function KitDetailPage(
   const voiceAi = readVoiceAi(
     (record.kitJson as { voiceAi?: unknown } | null | undefined)?.voiceAi
   );
+  const kitMeta = (record.kitJson as { meta?: { version?: unknown; updatedAt?: unknown } } | null | undefined)?.meta;
+  const version =
+    typeof kitMeta?.version === "number" && Number.isFinite(kitMeta.version) && kitMeta.version > 0
+      ? Math.floor(kitMeta.version)
+      : 1;
+  const updatedAt =
+    typeof kitMeta?.updatedAt === "string"
+      ? kitMeta.updatedAt
+      : record.createdAt.toISOString();
 
   return (
     <>
@@ -178,6 +187,9 @@ export default async function KitDetailPage(
               <h1 className="mt-2 text-3xl font-semibold tracking-tight">Brand kit</h1>
               <p className="mt-2 text-sm text-zinc-400 capitalize">
                 {record.mode} • {record.business} • {record.vibe}
+              </p>
+              <p className="mt-2 text-xs text-zinc-500">
+                Version v{version} • Last updated {new Date(updatedAt).toLocaleString()}
               </p>
             </div>
             <div className="flex flex-col items-end gap-2">
