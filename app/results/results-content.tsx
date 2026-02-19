@@ -294,6 +294,7 @@ export function ResultsContent() {
       : theme === "dark"
         ? `linear-gradient(120deg, ${kit.secondary} 0%, #000 60%, ${kit.primary} 140%)`
         : `linear-gradient(120deg, ${kit.neutrals[0]} 0%, #fff 60%, ${kit.primary} 160%)`;
+  const showSkeleton = status === "loading" && isGenerating && kit === null;
 
   if (status === "missing") {
     return (
@@ -423,7 +424,7 @@ export function ResultsContent() {
 
         <div className="mt-10">
           <section className="rounded-3xl border border-white/10 bg-black/25 p-6">
-            {kit === null ? (
+            {showSkeleton ? (
               <div className="space-y-6">
                 <div>
                   <div className="h-5 w-24 animate-pulse rounded bg-white/10" />
@@ -458,7 +459,7 @@ export function ResultsContent() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : kit === null ? null : (
               <>
                 <StagedSection
                   key={`colors-${revealRun}`}
