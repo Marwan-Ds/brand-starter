@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 
 export const runtime = "nodejs";
@@ -10,6 +11,14 @@ type BrandProfile = {
   description: string;
   audience: string;
   tone: Record<ToneKey, number>;
+};
+
+type BrandConstraints = {
+  formality: number;
+  humor: number;
+  intensity: number;
+  allowWords: string[];
+  avoidWords: string[];
 };
 
 type BrandKitMeta = {
@@ -31,7 +40,20 @@ const DEFAULT_PROFILE: BrandProfile = {
   },
 };
 
+const DEFAULT_CONSTRAINTS: BrandConstraints = {
+  formality: 50,
+  humor: 20,
+  intensity: 50,
+  allowWords: [],
+  avoidWords: [],
+};
+
 function clampTone(value: unknown, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function clampConstraint(value: unknown, fallback: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(100, Math.max(0, Math.round(value)));
 }
@@ -55,6 +77,34 @@ function normalizeProfile(value: unknown): BrandProfile | null {
       formal: clampTone(candidate.tone?.formal, DEFAULT_PROFILE.tone.formal),
       emotional: clampTone(candidate.tone?.emotional, DEFAULT_PROFILE.tone.emotional),
     },
+  };
+}
+
+function normalizeWordArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
+}
+
+function normalizeConstraints(value: unknown): BrandConstraints | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as {
+    formality?: unknown;
+    humor?: unknown;
+    intensity?: unknown;
+    allowWords?: unknown;
+    avoidWords?: unknown;
+  };
+
+  return {
+    formality: clampConstraint(candidate.formality, DEFAULT_CONSTRAINTS.formality),
+    humor: clampConstraint(candidate.humor, DEFAULT_CONSTRAINTS.humor),
+    intensity: clampConstraint(candidate.intensity, DEFAULT_CONSTRAINTS.intensity),
+    allowWords: normalizeWordArray(candidate.allowWords),
+    avoidWords: normalizeWordArray(candidate.avoidWords),
   };
 }
 
@@ -106,9 +156,26 @@ export async function PATCH(
 
   try {
     const body = await req.json();
-    const profile = normalizeProfile(body?.profile);
-    if (!profile) {
+    const hasProfile = Boolean(body && typeof body === "object" && "profile" in body);
+    const hasConstraints = Boolean(
+      body && typeof body === "object" && "constraints" in body
+    );
+
+    if (!hasProfile && !hasConstraints) {
+      return Response.json(
+        { ok: false, error: "Missing profile or constraints" },
+        { status: 400 }
+      );
+    }
+
+    const profile = hasProfile ? normalizeProfile(body?.profile) : null;
+    if (hasProfile && !profile) {
       return Response.json({ ok: false, error: "Invalid profile" }, { status: 400 });
+    }
+
+    const constraints = hasConstraints ? normalizeConstraints(body?.constraints) : null;
+    if (hasConstraints && !constraints) {
+      return Response.json({ ok: false, error: "Invalid constraints" }, { status: 400 });
     }
 
     const record = await prisma.brandKit.findUnique({
@@ -127,20 +194,32 @@ export async function PATCH(
     const nowIso = new Date().toISOString();
     const currentMeta = readMeta(existingKitJson.meta);
     const nextVersion = (currentMeta.version ?? 1) + 1;
+    const existingProfile =
+      existingKitJson.profile &&
+      typeof existingKitJson.profile === "object" &&
+      !Array.isArray(existingKitJson.profile)
+        ? (existingKitJson.profile as Record<string, unknown>)
+        : {};
+
+    const nextProfile: Record<string, unknown> = {
+      ...existingProfile,
+      ...(profile ? profile : {}),
+      ...(constraints ? { constraints } : {}),
+    };
 
     await prisma.brandKit.update({
       where: { id },
       data: {
         kitJson: {
           ...existingKitJson,
-          profile,
+          profile: nextProfile,
           meta: {
             ...currentMeta,
             version: nextVersion,
             updatedAt: nowIso,
             profileUpdatedAt: nowIso,
           },
-        },
+        } as Prisma.InputJsonValue,
       },
     });
 

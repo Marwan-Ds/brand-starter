@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 import { DeleteKitButton } from "./delete-kit-button";
 import { BrandIdentityCard, type BrandProfile } from "./brand-identity-card";
+import { BrandRulesCard, type BrandConstraints } from "./brand-rules-card";
 import { BrandVoiceCard, type BrandVoiceAi } from "./brand-voice-card";
 import { ColorSwatch } from "./color-swatch";
 import { AppNav } from "@/components/app-nav";
@@ -40,9 +41,31 @@ const DEFAULT_PROFILE: BrandProfile = {
   },
 };
 
+const DEFAULT_CONSTRAINTS: BrandConstraints = {
+  formality: 50,
+  humor: 20,
+  intensity: 50,
+  allowWords: [],
+  avoidWords: [],
+};
+
 function clampTone(value: unknown, fallback: number) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function clampConstraint(value: unknown, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function readConstraintWords(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, 6);
 }
 
 function readProfile(value: unknown): BrandProfile {
@@ -65,6 +88,19 @@ function readProfile(value: unknown): BrandProfile {
         DEFAULT_PROFILE.tone.emotional
       ),
     },
+  };
+}
+
+function readConstraints(value: unknown): BrandConstraints {
+  if (!value || typeof value !== "object") return DEFAULT_CONSTRAINTS;
+  const candidate = value as Partial<BrandConstraints>;
+
+  return {
+    formality: clampConstraint(candidate.formality, DEFAULT_CONSTRAINTS.formality),
+    humor: clampConstraint(candidate.humor, DEFAULT_CONSTRAINTS.humor),
+    intensity: clampConstraint(candidate.intensity, DEFAULT_CONSTRAINTS.intensity),
+    allowWords: readConstraintWords(candidate.allowWords),
+    avoidWords: readConstraintWords(candidate.avoidWords),
   };
 }
 
@@ -157,6 +193,10 @@ export default async function KitDetailPage(
   const bodyFontUrl = getGoogleFontUrl(kit.bodyFont);
   const profile = readProfile(
     (record.kitJson as { profile?: unknown } | null | undefined)?.profile
+  );
+  const constraints = readConstraints(
+    ((record.kitJson as { profile?: { constraints?: unknown } } | null | undefined)
+      ?.profile?.constraints)
   );
   const voiceAi = readVoiceAi(
     (record.kitJson as { voiceAi?: unknown } | null | undefined)?.voiceAi
@@ -254,6 +294,10 @@ export default async function KitDetailPage(
 
           <div className="mt-8">
             <BrandIdentityCard id={record.id} initialProfile={profile} />
+          </div>
+
+          <div className="mt-8">
+            <BrandRulesCard id={record.id} initialConstraints={constraints} />
           </div>
 
           <div className="mt-8">
