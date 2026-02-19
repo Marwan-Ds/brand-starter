@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { readBrandKit } from "@/lib/read-brand-kit";
 import { DeleteKitButton } from "./delete-kit-button";
 import { BrandIdentityCard, type BrandProfile } from "./brand-identity-card";
+import { BrandCoreAutofillButton } from "./brand-core-autofill-button";
 import { BrandRulesCard, type BrandConstraints } from "./brand-rules-card";
 import { BrandVoiceCard, type BrandVoiceAi } from "./brand-voice-card";
 import { ColorSwatch } from "./color-swatch";
@@ -291,6 +292,20 @@ export default async function KitDetailPage(
             </div>
             </div>
           </section>
+
+          <div className="mt-8">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Auto-fill Brand Core (AI)</h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Generates identity + rules you can edit.
+                  </p>
+                </div>
+                <BrandCoreAutofillButton id={record.id} />
+              </div>
+            </div>
+          </div>
 
           <div className="mt-8">
             <BrandIdentityCard id={record.id} initialProfile={profile} />
