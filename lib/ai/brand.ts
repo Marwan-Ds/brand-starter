@@ -6,6 +6,13 @@ type GenerateBrandKitAIInput = {
   vibe: string;
   primary?: string;
   secondary?: string;
+  guidance?: {
+    audiencePrimary: string;
+    audienceRefinement?: string;
+    visualTone: string[];
+    personality: string[];
+    avoid: string[];
+  };
 };
 
 export async function generateBrandKitAI(
@@ -33,6 +40,7 @@ export async function generateBrandKitAI(
           "2) Palette must feel specific to the requested vibe + business.\n" +
           "3) Ensure good contrast: secondary must be much darker or much lighter than primary.\n" +
           "4) Neutrals must be 4 values from light→dark or dark→light, consistent with the vibe.\n" +
+          "5) If optional guidance is provided, prioritize it while preserving a coherent brand system.\n" +
           "Output schema keys EXACTLY: primary, secondary, accent, neutrals (array of 4 hex), headlineFont, bodyFont.\n" +
           "Fonts: pick headlineFont and bodyFont from modern web-safe Google fonts (e.g., Inter, Manrope, Plus Jakarta Sans, Space Grotesk, Sora, DM Sans, IBM Plex Sans).",
       },

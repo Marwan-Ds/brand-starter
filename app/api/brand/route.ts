@@ -5,6 +5,14 @@ import type { BrandKit } from "@/lib/types";
 
 export const runtime = "nodejs";
 
+type BrandGuidance = {
+  audiencePrimary: string;
+  audienceRefinement?: string;
+  visualTone: string[];
+  personality: string[];
+  avoid: string[];
+};
+
 function isBrandKit(value: unknown): value is BrandKit {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<BrandKit>;
@@ -21,6 +29,47 @@ function isBrandKit(value: unknown): value is BrandKit {
   );
 }
 
+function normalizeStringList(value: unknown, max: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+function normalizeGuidance(value: unknown): BrandGuidance | undefined | null {
+  if (value == null) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const candidate = value as {
+    audiencePrimary?: unknown;
+    audienceRefinement?: unknown;
+    visualTone?: unknown;
+    personality?: unknown;
+    avoid?: unknown;
+  };
+
+  const audiencePrimary =
+    typeof candidate.audiencePrimary === "string"
+      ? candidate.audiencePrimary.trim()
+      : "";
+  if (!audiencePrimary) return null;
+
+  const audienceRefinement =
+    typeof candidate.audienceRefinement === "string"
+      ? candidate.audienceRefinement.trim()
+      : "";
+
+  return {
+    audiencePrimary,
+    ...(audienceRefinement ? { audienceRefinement } : {}),
+    visualTone: normalizeStringList(candidate.visualTone, 4),
+    personality: normalizeStringList(candidate.personality, 5),
+    avoid: normalizeStringList(candidate.avoid, 3),
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -30,10 +79,17 @@ export async function POST(req: Request) {
     const primary = typeof body?.primary === "string" ? body.primary : undefined;
     const secondary =
       typeof body?.secondary === "string" ? body.secondary : undefined;
+    const guidance = normalizeGuidance(body?.guidance);
 
     if (!mode || !business || !vibe) {
       return Response.json(
         { error: "Invalid request body. mode, business, and vibe are required." },
+        { status: 400 }
+      );
+    }
+    if (guidance === null) {
+      return Response.json(
+        { error: "Invalid guidance payload." },
         { status: 400 }
       );
     }
@@ -44,6 +100,7 @@ export async function POST(req: Request) {
       vibe,
       primary,
       secondary,
+      guidance,
     });
 
     let savedId: string | undefined;
