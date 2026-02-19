@@ -1,7 +1,7 @@
 "use client";
 
-import { SignedOut } from "@clerk/nextjs";
-import { useMemo, useState } from "react";
+import { SignedOut, useAuth } from "@clerk/nextjs";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -47,6 +47,111 @@ const AVOID_OPTIONS = [
   "Too formal",
 ] as const;
 
+const BRAND_DRAFT_STORAGE_KEY = "brand_draft_v1";
+
+type BrandDraft = {
+  mode: BrandMode;
+  business: BusinessType;
+  vibe: Vibe;
+  existingPrimary: string;
+  existingSecondary: string;
+  audiencePrimary: string;
+  audienceRefinement: string;
+  visualTone: string[];
+  personality: string[];
+  avoid: string[];
+};
+
+function safeReadDraft(): BrandDraft | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(BRAND_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<BrandDraft>;
+    const mode = parsed.mode === "existing" ? "existing" : "new";
+    const businessOptions: BusinessType[] = ["saas", "ecom", "agency", "creator"];
+    const vibeOptions: Vibe[] = ["minimal", "bold", "playful", "premium"];
+    const business = businessOptions.includes(parsed.business as BusinessType)
+      ? (parsed.business as BusinessType)
+      : "saas";
+    const vibe = vibeOptions.includes(parsed.vibe as Vibe)
+      ? (parsed.vibe as Vibe)
+      : "minimal";
+    const existingPrimary =
+      typeof parsed.existingPrimary === "string" ? parsed.existingPrimary : "#3B82F6";
+    const existingSecondary =
+      typeof parsed.existingSecondary === "string" ? parsed.existingSecondary : "#10B981";
+    const audiencePrimary =
+      typeof parsed.audiencePrimary === "string" &&
+      AUDIENCE_PRIMARY_OPTIONS.includes(parsed.audiencePrimary as (typeof AUDIENCE_PRIMARY_OPTIONS)[number])
+        ? parsed.audiencePrimary
+        : AUDIENCE_PRIMARY_OPTIONS[0];
+    const audienceRefinement =
+      typeof parsed.audienceRefinement === "string" ? parsed.audienceRefinement : "";
+
+    const visualTone = Array.isArray(parsed.visualTone)
+      ? parsed.visualTone
+          .filter(
+            (item): item is string =>
+              typeof item === "string" &&
+              VISUAL_TONE_OPTIONS.includes(item as (typeof VISUAL_TONE_OPTIONS)[number])
+          )
+          .slice(0, 4)
+      : [];
+    const personality = Array.isArray(parsed.personality)
+      ? parsed.personality
+          .filter(
+            (item): item is string =>
+              typeof item === "string" &&
+              PERSONALITY_OPTIONS.includes(item as (typeof PERSONALITY_OPTIONS)[number])
+          )
+          .slice(0, 5)
+      : [];
+    const avoid = Array.isArray(parsed.avoid)
+      ? parsed.avoid
+          .filter(
+            (item): item is string =>
+              typeof item === "string" &&
+              AVOID_OPTIONS.includes(item as (typeof AVOID_OPTIONS)[number])
+          )
+          .slice(0, 3)
+      : [];
+
+    return {
+      mode,
+      business,
+      vibe,
+      existingPrimary,
+      existingSecondary,
+      audiencePrimary,
+      audienceRefinement,
+      visualTone: visualTone.length >= 2 ? visualTone : [VISUAL_TONE_OPTIONS[0], VISUAL_TONE_OPTIONS[1]],
+      personality: personality.length >= 2
+        ? personality
+        : [PERSONALITY_OPTIONS[0], PERSONALITY_OPTIONS[1]],
+      avoid,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteDraft(draft: BrandDraft) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BRAND_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  } catch {}
+}
+
+function safeClearDraft() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(BRAND_DRAFT_STORAGE_KEY);
+  } catch {}
+}
+
 function toggleLimited(list: string[], value: string, max: number, min = 0) {
   const hasValue = list.includes(value);
   if (hasValue) {
@@ -59,6 +164,7 @@ function toggleLimited(list: string[], value: string, max: number, min = 0) {
 
 export default function SetupWizardPage() {
   const router = useRouter();
+  const { isSignedIn } = useAuth();
 
   const [step, setStep] = useState<1 | 2>(1);
   const [mode, setMode] = useState<BrandMode>("new");
@@ -83,6 +189,7 @@ export default function SetupWizardPage() {
     PERSONALITY_OPTIONS[1],
   ]);
   const [avoid, setAvoid] = useState<string[]>([]);
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
 
   const canGenerate = useMemo(() => {
     if (mode === "new") return true;
@@ -97,7 +204,44 @@ export default function SetupWizardPage() {
     personality.length <= 5 &&
     avoid.length <= 3;
 
+  useEffect(() => {
+    const draft = safeReadDraft();
+    if (!draft) return;
+
+    setMode(draft.mode);
+    setBusiness(draft.business);
+    setVibe(draft.vibe);
+    setExistingPrimary(draft.existingPrimary);
+    setExistingSecondary(draft.existingSecondary);
+    setAudiencePrimary(draft.audiencePrimary);
+    setAudienceRefinement(draft.audienceRefinement);
+    setVisualTone(draft.visualTone);
+    setPersonality(draft.personality);
+    setAvoid(draft.avoid);
+    setStep(2);
+    setShowDraftBanner(true);
+  }, []);
+
   async function generate() {
+    const draft: BrandDraft = {
+      mode,
+      business,
+      vibe,
+      existingPrimary,
+      existingSecondary,
+      audiencePrimary,
+      audienceRefinement,
+      visualTone,
+      personality,
+      avoid,
+    };
+
+    if (!isSignedIn) {
+      safeWriteDraft(draft);
+      router.push("/sign-up?redirect_url=/new");
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
@@ -138,6 +282,7 @@ export default function SetupWizardPage() {
         return;
       }
 
+      safeClearDraft();
       const params = new URLSearchParams({
         mode,
         business,
@@ -191,6 +336,19 @@ export default function SetupWizardPage() {
               <p className="text-sm text-zinc-300">Setup</p>
               <p className="text-sm text-zinc-400">Step {step} / 2</p>
             </div>
+
+            {showDraftBanner && (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-200">
+                <p>Your brand setup is ready. Click Finalize Brand to generate.</p>
+                <button
+                  type="button"
+                  onClick={() => setShowDraftBanner(false)}
+                  className="rounded-md border border-zinc-600 px-2 py-1 text-xs text-zinc-300 hover:text-zinc-100"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
 
             <div className="mt-6">
               <AnimatePresence mode="wait">
