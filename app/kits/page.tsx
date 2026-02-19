@@ -67,7 +67,7 @@ export default async function KitsPage() {
               <p className="mt-2 text-sm text-zinc-400">Newest first</p>
             </div>
             <Link
-              href="/"
+              href="/new"
               className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
             >
               New kit
@@ -76,7 +76,13 @@ export default async function KitsPage() {
 
           {kits.length === 0 ? (
             <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-300">
-              No saved kits yet.
+              <p>No saved kits yet.</p>
+              <Link
+                href="/new"
+                className="mt-4 inline-flex rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
+              >
+                New kit
+              </Link>
             </div>
           ) : (
             <div className="mt-8 grid gap-4">
