@@ -1,7 +1,7 @@
 "use client";
 
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as htmlToImage from "html-to-image";
@@ -15,7 +15,7 @@ type BrandKit = {
   bodyFont: string;
 };
 
-type RevealStage = "colors" | "fonts" | "profile" | "voice";
+type RevealStage = "colors" | "fonts" | "profile" | "voice" | "done";
 type GenerationStatus = "loading" | "success" | "missing" | "error";
 
 type GeneratePayload = {
@@ -40,6 +40,7 @@ const REVEAL_STAGE_ORDER: Record<RevealStage, number> = {
   fonts: 1,
   profile: 2,
   voice: 3,
+  done: 4,
 };
 
 function readGeneratePayload(value: unknown): GeneratePayload | null {
@@ -96,56 +97,36 @@ function readGeneratePayload(value: unknown): GeneratePayload | null {
   return payload;
 }
 
-function clampHex(hex: string, fallback: string) {
-  return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : fallback;
-}
+function readBrandKit(value: unknown): BrandKit | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<BrandKit>;
 
-function generateBrandKit(params: {
-  mode: string;
-  business: string;
-  vibe: string;
-  primary?: string;
-  secondary?: string;
-}): BrandKit {
-  const presets: Record<string, BrandKit> = {
-    minimal: {
-      primary: "#3B82F6",
-      secondary: "#111827",
-      neutrals: ["#F9FAFB", "#E5E7EB", "#9CA3AF", "#111827"],
-      accent: "#10B981",
-      headlineFont: "Inter",
-      bodyFont: "Inter",
-    },
-    bold: {
-      primary: "#8B5CF6",
-      secondary: "#111827",
-      neutrals: ["#0B0B12", "#111827", "#A1A1AA", "#FAFAFA"],
-      accent: "#F97316",
-      headlineFont: "Space Grotesk",
-      bodyFont: "Inter",
-    },
-    playful: {
-      primary: "#22C55E",
-      secondary: "#111827",
-      neutrals: ["#F8FAFC", "#E2E8F0", "#94A3B8", "#0F172A"],
-      accent: "#EC4899",
-      headlineFont: "DM Sans",
-      bodyFont: "Inter",
-    },
-    premium: {
-      primary: "#BE9D5F",
-      secondary: "#0B1220",
-      neutrals: ["#05070C", "#0B1220", "#8B93A7", "#F6F2E8"],
-      accent: "#60A5FA",
-      headlineFont: "Cormorant Garamond",
-      bodyFont: "Inter",
-    },
+  if (
+    typeof candidate.primary !== "string" ||
+    typeof candidate.secondary !== "string" ||
+    typeof candidate.accent !== "string" ||
+    !Array.isArray(candidate.neutrals) ||
+    candidate.neutrals.length !== 4 ||
+    candidate.neutrals.some((entry) => typeof entry !== "string") ||
+    typeof candidate.headlineFont !== "string" ||
+    typeof candidate.bodyFont !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    primary: candidate.primary,
+    secondary: candidate.secondary,
+    accent: candidate.accent,
+    neutrals: [
+      candidate.neutrals[0],
+      candidate.neutrals[1],
+      candidate.neutrals[2],
+      candidate.neutrals[3],
+    ],
+    headlineFont: candidate.headlineFont,
+    bodyFont: candidate.bodyFont,
   };
-
-  const base = presets[params.vibe] ?? presets.minimal;
-  const primary = clampHex(params.primary ?? base.primary, base.primary);
-  const secondary = clampHex(params.secondary ?? base.secondary, base.secondary);
-  return { ...base, primary, secondary };
 }
 
 export function ResultsContent() {
@@ -154,38 +135,17 @@ export function ResultsContent() {
 
   const [payload, setPayload] = useState<GeneratePayload | null>(null);
   const [status, setStatus] = useState<GenerationStatus>("loading");
-  const [apiText, setApiText] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [kit, setKit] = useState<BrandKit | null>(null);
+  const [stage, setStage] = useState<RevealStage>("colors");
+  const [revealRun, setRevealRun] = useState(0);
+  const [apiText, setApiText] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   const mode = payload?.mode ?? "new";
   const business = payload?.business ?? "saas";
   const vibe = payload?.vibe ?? "minimal";
-  const primary = payload?.primary;
-  const secondary = payload?.secondary;
-
-  const aiKit = useMemo(() => {
-    if (!apiText) return null;
-    try {
-      return JSON.parse(apiText) as Partial<BrandKit>;
-    } catch {
-      return null;
-    }
-  }, [apiText]);
-
-  const baseKit = useMemo(
-    () => generateBrandKit({ mode, business, vibe, primary, secondary }),
-    [mode, business, vibe, primary, secondary]
-  );
-
-  const kit = {
-    ...baseKit,
-    ...(aiKit ?? {}),
-  };
-
-  const [stage, setStage] = useState<RevealStage>("colors");
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [revealRun, setRevealRun] = useState(0);
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -220,6 +180,10 @@ export function ResultsContent() {
 
     const run = async () => {
       try {
+        setIsGenerating(true);
+        setKit(null);
+        setApiText("");
+
         const res = await fetch("/api/brand", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -238,16 +202,30 @@ export function ResultsContent() {
           throw new Error(data?.error ?? "Could not generate brand kit.");
         }
 
+        let parsedKit: BrandKit | null = null;
+        try {
+          parsedKit = readBrandKit(JSON.parse(data?.text ?? ""));
+        } catch {
+          parsedKit = null;
+        }
+        if (!parsedKit) {
+          throw new Error("Generated brand kit payload was invalid.");
+        }
+
         if (canceled) return;
         setApiText(data?.text ?? "");
+        setKit(parsedKit);
+        setIsGenerating(false);
         try {
           window.localStorage.removeItem("brand_draft_v1");
         } catch {}
+        setRevealRun((current) => current + 1);
         setStatus("success");
       } catch (error: unknown) {
         if (canceled) return;
         const message =
           error instanceof Error ? error.message : "Could not generate brand kit.";
+        setIsGenerating(false);
         setErrorMessage(message);
         setStatus("error");
       }
@@ -260,29 +238,22 @@ export function ResultsContent() {
   }, [payload]);
 
   useEffect(() => {
-    if (!payload) return;
+    if (!kit) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    setDataLoaded(false);
     setStage("colors");
-
-    timers.push(
-      setTimeout(() => {
-        setDataLoaded(true);
-        setStage("colors");
-        timers.push(setTimeout(() => setStage("fonts"), 350));
-        timers.push(setTimeout(() => setStage("profile"), 750));
-        timers.push(setTimeout(() => setStage("voice"), 1150));
-      }, 100)
-    );
+    timers.push(setTimeout(() => setStage("fonts"), 350));
+    timers.push(setTimeout(() => setStage("profile"), 750));
+    timers.push(setTimeout(() => setStage("voice"), 1150));
+    timers.push(setTimeout(() => setStage("done"), 1450));
 
     return () => {
       timers.forEach((timer) => clearTimeout(timer));
     };
-  }, [payload, revealRun]);
+  }, [kit, revealRun]);
 
   const canReveal = (target: RevealStage) =>
-    dataLoaded && REVEAL_STAGE_ORDER[stage] >= REVEAL_STAGE_ORDER[target];
+    REVEAL_STAGE_ORDER[stage] >= REVEAL_STAGE_ORDER[target];
 
   const audience =
     business === "saas"
@@ -318,9 +289,11 @@ export function ResultsContent() {
   ];
 
   const bg =
-    theme === "dark"
-      ? `linear-gradient(120deg, ${kit.secondary} 0%, #000 60%, ${kit.primary} 140%)`
-      : `linear-gradient(120deg, ${kit.neutrals[0]} 0%, #fff 60%, ${kit.primary} 160%)`;
+    !kit
+      ? "linear-gradient(120deg, #111827 0%, #000 60%, #27272A 140%)"
+      : theme === "dark"
+        ? `linear-gradient(120deg, ${kit.secondary} 0%, #000 60%, ${kit.primary} 140%)`
+        : `linear-gradient(120deg, ${kit.neutrals[0]} 0%, #fff 60%, ${kit.primary} 160%)`;
 
   if (status === "missing") {
     return (
@@ -432,7 +405,7 @@ export function ResultsContent() {
           </div>
         </div>
         
-        {status === "loading" && (
+        {isGenerating && (
           <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4">
             <p className="text-sm text-white/80">Generating your brand kit…</p>
           </div>
@@ -450,109 +423,148 @@ export function ResultsContent() {
 
         <div className="mt-10">
           <section className="rounded-3xl border border-white/10 bg-black/25 p-6">
-            <StagedSection
-              key={`colors-${revealRun}`}
-              show={canReveal("colors")}
-              skeleton={
+            {kit === null ? (
+              <div className="space-y-6">
                 <div>
                   <div className="h-5 w-24 animate-pulse rounded bg-white/10" />
                   <div className="mt-4 grid gap-4 md:grid-cols-3">
                     {[1, 2, 3].map((i) => (
                       <div
-                        key={i}
+                        key={`skeleton-color-${i}`}
                         className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10"
                       />
                     ))}
                   </div>
                 </div>
-              }
-            >
-              <h2 className="text-lg font-semibold">Palette</h2>
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <ColorCard label="Primary" hex={kit.primary} big />
-                <ColorCard label="Secondary" hex={kit.secondary} />
-                <ColorCard label="Accent" hex={kit.accent} />
-              </div>
-            </StagedSection>
-
-            <StagedSection
-              key={`fonts-${revealRun}`}
-              show={canReveal("fonts")}
-              skeleton={
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
-                  <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
+                <div>
+                  <div className="h-5 w-20 animate-pulse rounded bg-white/10" />
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
+                    <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
+                  </div>
                 </div>
-              }
-            >
-              <h2 className="mt-8 text-lg font-semibold">Fonts</h2>
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <FontCard title="Font Pairing A" headline={kit.headlineFont} body={kit.bodyFont} />
-                <FontCard title="Font Pairing B" headline="Inter" body="DM Sans" />
-              </div>
-            </StagedSection>
-
-            <StagedSection
-              key={`profile-${revealRun}`}
-              show={canReveal("profile")}
-              skeleton={
-                <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div>
                   <div className="h-5 w-28 animate-pulse rounded bg-white/10" />
-                  <div className="mt-4 h-4 w-full animate-pulse rounded bg-white/10" />
-                  <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-white/10" />
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="h-4 w-full animate-pulse rounded bg-white/10" />
+                    <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-white/10" />
+                  </div>
                 </div>
-              }
-            >
-              <h2 className="mt-8 text-lg font-semibold">Brand profile</h2>
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-sm text-white/70">Audience</p>
-                <p className="mt-1 text-sm">{audience}</p>
-                <p className="mt-4 text-sm text-white/70">Direction</p>
-                <p className="mt-1 text-sm">{profileSummary}</p>
-              </div>
-            </StagedSection>
-
-            <StagedSection
-              key={`voice-${revealRun}`}
-              show={canReveal("voice")}
-              skeleton={
-                <div className="mt-6">
-                  <div className="h-5 w-32 animate-pulse rounded bg-white/10" />
-                  <div className="mt-4 h-4 w-full animate-pulse rounded bg-white/10" />
-                  <div className="mt-2 h-4 w-5/6 animate-pulse rounded bg-white/10" />
+                <div>
+                  <div className="h-5 w-24 animate-pulse rounded bg-white/10" />
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="h-4 w-full animate-pulse rounded bg-white/10" />
+                    <div className="mt-2 h-4 w-5/6 animate-pulse rounded bg-white/10" />
+                  </div>
                 </div>
-              }
-            >
-              <h2 className="mt-8 text-lg font-semibold">Brand voice</h2>
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                <p className="text-sm text-white/80">{voiceSummary}</p>
-                <ul className="mt-3 space-y-1 text-sm text-white/75">
-                  {voiceLines.map((line) => (
-                    <li key={line}>• {line}</li>
-                  ))}
-                </ul>
               </div>
+            ) : (
+              <>
+                <StagedSection
+                  key={`colors-${revealRun}`}
+                  show={canReveal("colors")}
+                  skeleton={
+                    <div>
+                      <div className="h-5 w-24 animate-pulse rounded bg-white/10" />
+                      <div className="mt-4 grid gap-4 md:grid-cols-3">
+                        {[1, 2, 3].map((i) => (
+                          <div
+                            key={i}
+                            className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  }
+                >
+                  <h2 className="text-lg font-semibold">Palette</h2>
+                  <div className="mt-4 grid gap-4 md:grid-cols-3">
+                    <ColorCard label="Primary" hex={kit.primary} big />
+                    <ColorCard label="Secondary" hex={kit.secondary} />
+                    <ColorCard label="Accent" hex={kit.accent} />
+                  </div>
+                </StagedSection>
 
-              <div className="mt-8 flex items-center justify-between gap-4">
-                <h2 className="text-lg font-semibold">Post previews</h2>
-                <span className="text-sm text-white/70">
-                  Templates (MVP) • Brand applied
-                </span>
-              </div>
+                <StagedSection
+                  key={`fonts-${revealRun}`}
+                  show={canReveal("fonts")}
+                  skeleton={
+                    <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                      <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
+                      <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/10" />
+                    </div>
+                  }
+                >
+                  <h2 className="mt-8 text-lg font-semibold">Fonts</h2>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <FontCard title="Font Pairing A" headline={kit.headlineFont} body={kit.bodyFont} />
+                    <FontCard title="Font Pairing B" headline="Inter" body="DM Sans" />
+                  </div>
+                </StagedSection>
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <PostMock key={i} kit={kit} variant={i} theme={theme} />
-                ))}
-              </div>
-            </StagedSection>
+                <StagedSection
+                  key={`profile-${revealRun}`}
+                  show={canReveal("profile")}
+                  skeleton={
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="h-5 w-28 animate-pulse rounded bg-white/10" />
+                      <div className="mt-4 h-4 w-full animate-pulse rounded bg-white/10" />
+                      <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-white/10" />
+                    </div>
+                  }
+                >
+                  <h2 className="mt-8 text-lg font-semibold">Brand profile</h2>
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm text-white/70">Audience</p>
+                    <p className="mt-1 text-sm">{audience}</p>
+                    <p className="mt-4 text-sm text-white/70">Direction</p>
+                    <p className="mt-1 text-sm">{profileSummary}</p>
+                  </div>
+                </StagedSection>
 
-            <button
-              onClick={() => setRevealRun((current) => current + 1)}
-              className="mt-8 w-full rounded-2xl bg-white px-5 py-4 text-base font-semibold text-zinc-950 hover:bg-zinc-50"
-            >
-              ✨ Regenerate
-            </button>
+                <StagedSection
+                  key={`voice-${revealRun}`}
+                  show={canReveal("voice")}
+                  skeleton={
+                    <div className="mt-6">
+                      <div className="h-5 w-32 animate-pulse rounded bg-white/10" />
+                      <div className="mt-4 h-4 w-full animate-pulse rounded bg-white/10" />
+                      <div className="mt-2 h-4 w-5/6 animate-pulse rounded bg-white/10" />
+                    </div>
+                  }
+                >
+                  <h2 className="mt-8 text-lg font-semibold">Brand voice</h2>
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-sm text-white/80">{voiceSummary}</p>
+                    <ul className="mt-3 space-y-1 text-sm text-white/75">
+                      {voiceLines.map((line) => (
+                        <li key={line}>• {line}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-8 flex items-center justify-between gap-4">
+                    <h2 className="text-lg font-semibold">Post previews</h2>
+                    <span className="text-sm text-white/70">
+                      Templates (MVP) • Brand applied
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <PostMock key={i} kit={kit} variant={i} theme={theme} />
+                    ))}
+                  </div>
+                </StagedSection>
+
+                <button
+                  onClick={() => setRevealRun((current) => current + 1)}
+                  className="mt-8 w-full rounded-2xl bg-white px-5 py-4 text-base font-semibold text-zinc-950 hover:bg-zinc-50"
+                >
+                  ✨ Regenerate
+                </button>
+              </>
+            )}
           </section>
         </div>
       </div>
