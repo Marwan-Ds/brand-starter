@@ -190,11 +190,18 @@ export default function SetupWizardPage() {
 
   const canFinalize =
     canGenerate &&
+    audiencePrimary.trim().length > 0 &&
     visualTone.length >= 2 &&
     visualTone.length <= 4 &&
     personality.length >= 2 &&
     personality.length <= 5 &&
     avoid.length <= 3;
+  const finalizeHint =
+    visualTone.length < 2
+      ? "Pick at least 2 Visual Tone chips."
+      : personality.length < 2
+        ? "Pick at least 2 Personality chips."
+        : "Complete the selections to continue.";
 
   useEffect(() => {
     const draft = safeReadDraft();
@@ -490,7 +497,12 @@ export default function SetupWizardPage() {
                     </div>
 
                     <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                      <p className="text-sm text-zinc-300">Visual tone (pick 2-4)</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm text-zinc-300">Visual tone</p>
+                        <p className="text-xs text-zinc-500">
+                          {visualTone.length}/4 · Pick 2–4
+                        </p>
+                      </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {VISUAL_TONE_OPTIONS.map((item) => (
                           <button
@@ -512,7 +524,12 @@ export default function SetupWizardPage() {
                     </div>
 
                     <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                      <p className="text-sm text-zinc-300">Personality traits (pick 2-5)</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm text-zinc-300">Personality traits</p>
+                        <p className="text-xs text-zinc-500">
+                          {personality.length}/5 · Pick 2–5
+                        </p>
+                      </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {PERSONALITY_OPTIONS.map((item) => (
                           <button
@@ -534,7 +551,12 @@ export default function SetupWizardPage() {
                     </div>
 
                     <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                      <p className="text-sm text-zinc-300">Avoid traits (max 3)</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm text-zinc-300">Avoid traits</p>
+                        <p className="text-xs text-zinc-500">
+                          {avoid.length}/3 · Up to 3
+                        </p>
+                      </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {AVOID_OPTIONS.map((item) => (
                           <button
@@ -553,17 +575,12 @@ export default function SetupWizardPage() {
                       </div>
                     </div>
 
-                    {!canFinalize && (
-                      <p className="mt-4 text-sm text-zinc-400">
-                        Pick 2-4 visual tones and 2-5 personality traits to finalize.
-                      </p>
-                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            <div className="mt-8 flex items-center justify-between">
+            <div className="mt-8 flex items-start justify-between gap-3">
               {step === 2 ? (
                 <button
                   type="button"
@@ -585,14 +602,19 @@ export default function SetupWizardPage() {
                   Continue
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={generate}
-                  disabled={!canFinalize}
-                  className="rounded-2xl bg-zinc-50 px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Finalize Brand
-                </button>
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    type="button"
+                    onClick={generate}
+                    disabled={!canFinalize}
+                    className="rounded-2xl bg-zinc-50 px-5 py-3 text-sm font-semibold text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Finalize Brand
+                  </button>
+                  {!canFinalize && step === 2 ? (
+                    <p className="text-xs text-zinc-400">{finalizeHint}</p>
+                  ) : null}
+                </div>
               )}
             </div>
           </section>
