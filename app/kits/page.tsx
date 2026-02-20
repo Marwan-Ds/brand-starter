@@ -89,11 +89,15 @@ export default async function KitsPage() {
               {kits.map((kit) => {
                 const parsed = readBrandKit(kit.kitJson);
                 return (
-                  <Link
+                  <article
                     key={kit.id}
-                    href={`/kits/${kit.id}`}
-                    className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 transition hover:border-zinc-600"
+                    className="relative rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 transition hover:border-zinc-600"
                   >
+                    <Link
+                      href={`/kits/${kit.id}`}
+                      aria-label={`Open kit ${kit.id}`}
+                      className="absolute inset-0 z-10 rounded-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-300"
+                    />
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <p className="text-sm text-zinc-400">
@@ -103,19 +107,27 @@ export default async function KitsPage() {
                           {kit.mode} • {kit.business} • {kit.vibe}
                         </p>
                       </div>
-                      {parsed && (
-                        <div className="flex items-center gap-2">
-                          {[parsed.primary, parsed.secondary, parsed.accent].map((hex) => (
-                            <div
-                              key={hex}
-                              className="h-6 w-6 rounded-full border border-zinc-700"
-                              style={{ backgroundColor: hex }}
-                            />
-                          ))}
-                        </div>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/kits/${kit.id}/assets`}
+                          className="relative z-20 rounded-lg border border-zinc-700 bg-zinc-900/50 px-2.5 py-1.5 text-xs text-zinc-100 hover:border-zinc-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-300"
+                        >
+                          Assets
+                        </Link>
+                        {parsed && (
+                          <div className="flex items-center gap-2">
+                            {[parsed.primary, parsed.secondary, parsed.accent].map((hex) => (
+                              <div
+                                key={hex}
+                                className="h-6 w-6 rounded-full border border-zinc-700"
+                                style={{ backgroundColor: hex }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </Link>
+                  </article>
                 );
               })}
             </div>

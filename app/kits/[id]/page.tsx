@@ -232,6 +232,7 @@ export default async function KitDetailPage(
               <p className="mt-2 text-xs text-zinc-500">
                 Version v{version} • Last updated {new Date(updatedAt).toLocaleString()}
               </p>
+              <p className="mt-1 text-xs text-zinc-500">Campaigns & outputs</p>
             </div>
             <div className="flex flex-col items-end gap-2">
               <p className="text-sm text-zinc-400">
@@ -239,7 +240,7 @@ export default async function KitDetailPage(
               </p>
               <Link
                 href={`/kits/${record.id}/assets`}
-                className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
+                className="rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
               >
                 Assets
               </Link>
