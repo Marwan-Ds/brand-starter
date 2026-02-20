@@ -1,21 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CreateCampaignButton } from "./create-campaign-button";
 
 const GOAL_OPTIONS = ["Awareness", "Engagement", "Leads", "Launch"] as const;
 const CTA_OPTIONS = ["Learn more", "Try now", "Book a demo", "Shop now"] as const;
 
-export function AssetsGeneratorCard({ id }: { id: string }) {
+type CampaignOption = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
+
+export function AssetsGeneratorCard({
+  id,
+  campaigns,
+}: {
+  id: string;
+  campaigns: CampaignOption[];
+}) {
   const router = useRouter();
   const [goal, setGoal] = useState<(typeof GOAL_OPTIONS)[number]>("Awareness");
   const [cta, setCta] = useState<(typeof CTA_OPTIONS)[number]>("Learn more");
   const [topic, setTopic] = useState("");
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const hasCampaigns = campaigns.length > 0;
+
+  useEffect(() => {
+    if (!hasCampaigns) {
+      setSelectedCampaignId("");
+      return;
+    }
+
+    if (campaigns.some((campaign) => campaign.id === selectedCampaignId)) {
+      return;
+    }
+
+    setSelectedCampaignId(campaigns[0].id);
+  }, [campaigns, hasCampaigns, selectedCampaignId]);
 
   async function handleGenerate() {
-    if (isGenerating) return;
+    if (isGenerating || !selectedCampaignId) return;
 
     setIsGenerating(true);
     setErrorMsg("");
@@ -26,6 +54,7 @@ export function AssetsGeneratorCard({ id }: { id: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "caption_pack",
+          campaignId: selectedCampaignId,
           goal,
           cta,
           ...(topic.trim() ? { topic: topic.trim() } : {}),
@@ -48,9 +77,37 @@ export function AssetsGeneratorCard({ id }: { id: string }) {
   }
 
   return (
-    <div className="rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
+    <div className="relative rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
       <h2 className="text-lg font-semibold">Generate Assets</h2>
       <p className="mt-1 text-sm text-zinc-400">Caption Pack (3 hooks + 3 captions)</p>
+
+      {hasCampaigns ? (
+        <div className="mt-5">
+          <div className="flex items-center justify-between gap-3">
+            <label className="block flex-1">
+              <span className="text-xs uppercase tracking-wide text-zinc-500">Campaign</span>
+              <select
+                value={selectedCampaignId}
+                onChange={(event) => setSelectedCampaignId(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+              >
+                {campaigns.map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="pt-5">
+              <CreateCampaignButton
+                id={id}
+                label="New campaign"
+                className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5">
         <p className="text-xs uppercase tracking-wide text-zinc-500">Goal</p>
@@ -104,7 +161,7 @@ export function AssetsGeneratorCard({ id }: { id: string }) {
       <button
         type="button"
         onClick={handleGenerate}
-        disabled={isGenerating}
+        disabled={isGenerating || !selectedCampaignId}
         className="mt-5 rounded-xl bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-zinc-200 disabled:opacity-60"
       >
         {isGenerating ? "Generating..." : "Generate"}
@@ -120,6 +177,12 @@ export function AssetsGeneratorCard({ id }: { id: string }) {
               className="h-10 animate-pulse rounded-xl border border-zinc-800 bg-zinc-950/50"
             />
           ))}
+        </div>
+      ) : null}
+
+      {!hasCampaigns ? (
+        <div className="absolute inset-0 flex items-center justify-center rounded-3xl bg-zinc-950/75 p-6 text-center">
+          <p className="text-sm text-zinc-300">Create a campaign to generate assets.</p>
         </div>
       ) : null}
     </div>

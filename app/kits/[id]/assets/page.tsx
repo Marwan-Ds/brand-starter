@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { AppNav } from "@/components/app-nav";
+import { readAssetCampaigns } from "@/lib/assets-campaigns";
 import { AssetsGeneratorCard } from "../assets-generator-card";
 import { AssetsList } from "../assets-list";
 
@@ -22,6 +23,7 @@ export default async function KitAssetsPage(
     where: { id, userId },
     select: {
       id: true,
+      createdAt: true,
       mode: true,
       business: true,
       vibe: true,
@@ -32,6 +34,16 @@ export default async function KitAssetsPage(
   if (!record) {
     notFound();
   }
+
+  const campaigns = readAssetCampaigns(
+    (record.kitJson as { assets?: unknown } | null | undefined)?.assets,
+    record.createdAt.toISOString()
+  );
+  const campaignOptions = campaigns.map((campaign) => ({
+    id: campaign.id,
+    name: campaign.name,
+    createdAt: campaign.createdAt,
+  }));
 
   return (
     <>
@@ -52,12 +64,8 @@ export default async function KitAssetsPage(
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-            <AssetsGeneratorCard id={record.id} />
-            <AssetsList
-              assets={
-                (record.kitJson as { assets?: unknown } | null | undefined)?.assets
-              }
-            />
+            <AssetsGeneratorCard id={record.id} campaigns={campaignOptions} />
+            <AssetsList id={record.id} campaigns={campaigns} />
           </div>
         </div>
       </main>
