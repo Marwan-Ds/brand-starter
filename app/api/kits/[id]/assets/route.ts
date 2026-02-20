@@ -23,9 +23,96 @@ type BrandKitMeta = {
   assetsUpdatedAt?: string;
 };
 
+type CampaignContextInput = {
+  goal: string;
+  platform: string;
+  ctaStyle?: string;
+  notes?: string;
+};
+
 function trimAndClamp(value: unknown, max: number) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, max);
+}
+
+function normalizeOptionalField(value: unknown, max: number) {
+  const trimmed = trimAndClamp(value, max);
+  return trimmed ? trimmed : undefined;
+}
+
+function readCreateCampaignContext(body: Record<string, unknown>) {
+  const goal = trimAndClamp(body.goal, 80);
+  const platform = trimAndClamp(body.platform, 40);
+  const ctaStyle = normalizeOptionalField(body.ctaStyle, 30);
+  const notes = normalizeOptionalField(body.notes, 280);
+
+  if (goal.length < 3) {
+    return { error: "Goal must be 3-80 characters." } as const;
+  }
+
+  if (platform.length < 2) {
+    return { error: "Platform must be 2-40 characters." } as const;
+  }
+
+  if (body.ctaStyle !== undefined && !ctaStyle) {
+    return { error: "CTA style must be 2-30 characters." } as const;
+  }
+
+  return {
+    data: {
+      goal,
+      platform,
+      ...(ctaStyle ? { ctaStyle } : {}),
+      ...(notes ? { notes } : {}),
+    } satisfies CampaignContextInput,
+  } as const;
+}
+
+function readUpdateCampaignContext(body: Record<string, unknown>) {
+  const hasGoal = body.goal !== undefined;
+  const hasPlatform = body.platform !== undefined;
+  const hasCtaStyle = body.ctaStyle !== undefined;
+  const hasNotes = body.notes !== undefined;
+
+  if (!hasGoal && !hasPlatform && !hasCtaStyle && !hasNotes) {
+    return { error: "No campaign context fields provided." } as const;
+  }
+
+  const patch: {
+    goal?: string;
+    platform?: string;
+    ctaStyle?: string;
+    notes?: string;
+  } = {};
+
+  if (hasGoal) {
+    const goal = trimAndClamp(body.goal, 80);
+    if (goal.length < 3) {
+      return { error: "Goal must be 3-80 characters." } as const;
+    }
+    patch.goal = goal;
+  }
+
+  if (hasPlatform) {
+    const platform = trimAndClamp(body.platform, 40);
+    if (platform.length < 2) {
+      return { error: "Platform must be 2-40 characters." } as const;
+    }
+    patch.platform = platform;
+  }
+
+  if (hasCtaStyle) {
+    patch.ctaStyle = trimAndClamp(body.ctaStyle, 30);
+    if (patch.ctaStyle.length === 1) {
+      return { error: "CTA style must be 2-30 characters." } as const;
+    }
+  }
+
+  if (hasNotes) {
+    patch.notes = trimAndClamp(body.notes, 280);
+  }
+
+  return { data: patch } as const;
 }
 
 function normalizeWordList(value: unknown): string[] {
@@ -257,7 +344,11 @@ export async function POST(
   }
 
   try {
-    const body = await req.json();
+    const rawBody = await req.json();
+    const body =
+      rawBody && typeof rawBody === "object" && !Array.isArray(rawBody)
+        ? (rawBody as Record<string, unknown>)
+        : {};
 
     const record = await prisma.brandKit.findFirst({
       where: { id, userId },
@@ -282,8 +373,8 @@ export async function POST(
       record.createdAt.toISOString()
     );
 
-    if (body?.action === "create_campaign") {
-      const name = trimAndClamp(body?.name, 60);
+    if (body.action === "create_campaign") {
+      const name = trimAndClamp(body.name, 60);
       if (name.length < 2) {
         return Response.json(
           { ok: false, error: "Campaign name must be 2-60 characters." },
@@ -291,11 +382,22 @@ export async function POST(
         );
       }
 
+      const contextResult = readCreateCampaignContext(body);
+      if ("error" in contextResult) {
+        return Response.json({ ok: false, error: contextResult.error }, { status: 400 });
+      }
+
+      const campaignId = randomUUID();
       const nextCampaigns: AssetCampaign[] = [
         {
-          id: randomUUID(),
+          id: campaignId,
           name,
+          goal: contextResult.data.goal,
+          platform: contextResult.data.platform,
+          ...(contextResult.data.ctaStyle ? { ctaStyle: contextResult.data.ctaStyle } : {}),
+          ...(contextResult.data.notes ? { notes: contextResult.data.notes } : {}),
           createdAt: nowIso,
+          updatedAt: nowIso,
           items: [],
         },
         ...campaigns,
@@ -308,15 +410,82 @@ export async function POST(
         },
       });
 
+      return Response.json({ ok: true, campaignId });
+    }
+
+    if (body.action === "update_campaign_context") {
+      const campaignId = trimAndClamp(body.campaignId, 120);
+      if (!campaignId) {
+        return Response.json(
+          { ok: false, error: "campaignId is required." },
+          { status: 400 }
+        );
+      }
+
+      const campaignIndex = campaigns.findIndex((campaign) => campaign.id === campaignId);
+      if (campaignIndex === -1) {
+        return Response.json(
+          { ok: false, error: "Invalid campaignId." },
+          { status: 400 }
+        );
+      }
+
+      const patchResult = readUpdateCampaignContext(body);
+      if ("error" in patchResult) {
+        return Response.json({ ok: false, error: patchResult.error }, { status: 400 });
+      }
+
+      const nextCampaigns = campaigns.map((campaign, index) => {
+        if (index !== campaignIndex) return campaign;
+
+        const nextCampaign: AssetCampaign = {
+          ...campaign,
+          updatedAt: nowIso,
+        };
+
+        if (patchResult.data.goal !== undefined) {
+          nextCampaign.goal = patchResult.data.goal;
+        }
+
+        if (patchResult.data.platform !== undefined) {
+          nextCampaign.platform = patchResult.data.platform;
+        }
+
+        if (patchResult.data.ctaStyle !== undefined) {
+          if (patchResult.data.ctaStyle) {
+            nextCampaign.ctaStyle = patchResult.data.ctaStyle;
+          } else {
+            delete nextCampaign.ctaStyle;
+          }
+        }
+
+        if (patchResult.data.notes !== undefined) {
+          if (patchResult.data.notes) {
+            nextCampaign.notes = patchResult.data.notes;
+          } else {
+            delete nextCampaign.notes;
+          }
+        }
+
+        return nextCampaign;
+      });
+
+      await prisma.brandKit.update({
+        where: { id: record.id },
+        data: {
+          kitJson: saveCampaigns(existingKitJson, nextCampaigns, nowIso),
+        },
+      });
+
       return Response.json({ ok: true });
     }
 
-    const type = body?.type as AssetType | undefined;
+    const type = body.type as AssetType | undefined;
     if (type !== "caption_pack") {
       return Response.json({ ok: false, error: "Invalid type" }, { status: 400 });
     }
 
-    const campaignId = trimAndClamp(body?.campaignId, 120);
+    const campaignId = trimAndClamp(body.campaignId, 120);
     if (!campaignId) {
       return Response.json(
         { ok: false, error: "campaignId is required." },
@@ -329,9 +498,9 @@ export async function POST(
       return Response.json({ ok: false, error: "Invalid campaignId." }, { status: 400 });
     }
 
-    const goal = trimAndClamp(body?.goal, 120);
-    const cta = trimAndClamp(body?.cta, 120);
-    const topic = trimAndClamp(body?.topic, 280);
+    const goal = trimAndClamp(body.goal, 120);
+    const cta = trimAndClamp(body.cta, 120);
+    const topic = trimAndClamp(body.topic, 280);
 
     if (!goal || !cta) {
       return Response.json(
@@ -345,10 +514,20 @@ export async function POST(
     const voiceAi = readKitJsonObject(existingKitJson.voiceAi);
     const avoidWords = normalizeWordList(constraints.avoidWords);
 
+    const selectedCampaign = campaigns[campaignIndex];
+
     const promptInput = {
       mode: record.mode,
       business: record.business,
       vibe: record.vibe,
+      campaign: {
+        id: selectedCampaign.id,
+        name: selectedCampaign.name,
+        goal: selectedCampaign.goal,
+        platform: selectedCampaign.platform,
+        ctaStyle: selectedCampaign.ctaStyle,
+        notes: selectedCampaign.notes,
+      },
       goal,
       cta,
       ...(topic ? { topic } : {}),
@@ -436,6 +615,7 @@ export async function POST(
       index === campaignIndex
         ? {
             ...campaign,
+            updatedAt: nowIso,
             items: [nextItem, ...campaign.items],
           }
         : campaign

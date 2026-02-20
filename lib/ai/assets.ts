@@ -4,6 +4,14 @@ type GenerateCaptionPackAIInput = {
   mode: string;
   business: string;
   vibe: string;
+  campaign?: {
+    id?: string;
+    name?: string;
+    goal?: string;
+    platform?: string;
+    ctaStyle?: string;
+    notes?: string;
+  };
   goal: string;
   cta: string;
   topic?: string;

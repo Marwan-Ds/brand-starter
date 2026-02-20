@@ -16,9 +16,11 @@ type CampaignOption = {
 export function AssetsGeneratorCard({
   id,
   campaigns,
+  fixedCampaignId,
 }: {
   id: string;
   campaigns: CampaignOption[];
+  fixedCampaignId?: string;
 }) {
   const router = useRouter();
   const [goal, setGoal] = useState<(typeof GOAL_OPTIONS)[number]>("Awareness");
@@ -35,12 +37,26 @@ export function AssetsGeneratorCard({
       return;
     }
 
-    if (campaigns.some((campaign) => campaign.id === selectedCampaignId)) {
+    if (fixedCampaignId && campaigns.some((campaign) => campaign.id === fixedCampaignId)) {
+      if (selectedCampaignId !== fixedCampaignId) {
+        setSelectedCampaignId(fixedCampaignId);
+      }
+      return;
+    }
+
+    const hasSelectedCampaign = campaigns.some(
+      (campaign) => campaign.id === selectedCampaignId
+    );
+    if (hasSelectedCampaign) {
+      return;
+    }
+
+    if (selectedCampaignId) {
       return;
     }
 
     setSelectedCampaignId(campaigns[0].id);
-  }, [campaigns, hasCampaigns, selectedCampaignId]);
+  }, [campaigns, fixedCampaignId, hasCampaigns, selectedCampaignId]);
 
   async function handleGenerate() {
     if (isGenerating || !selectedCampaignId) return;
@@ -81,7 +97,7 @@ export function AssetsGeneratorCard({
       <h2 className="text-lg font-semibold">Generate Assets</h2>
       <p className="mt-1 text-sm text-zinc-400">Caption Pack (3 hooks + 3 captions)</p>
 
-      {hasCampaigns ? (
+      {hasCampaigns && !fixedCampaignId ? (
         <div className="mt-5">
           <div className="flex items-center justify-between gap-3">
             <label className="block flex-1">
@@ -102,6 +118,7 @@ export function AssetsGeneratorCard({
               <CreateCampaignButton
                 id={id}
                 label="New campaign"
+                onCreatedCampaign={(campaignId) => setSelectedCampaignId(campaignId)}
                 className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
               />
             </div>

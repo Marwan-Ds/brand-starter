@@ -3,25 +3,68 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const PLATFORM_OPTIONS = [
+  "Instagram",
+  "LinkedIn",
+  "TikTok",
+  "X",
+  "Email",
+  "Website",
+] as const;
+
+const GOAL_OPTIONS = [
+  "Awareness",
+  "Engagement",
+  "Leads",
+  "Launch",
+  "Retention",
+] as const;
+
 export function CreateCampaignButton({
   id,
   label = "New campaign",
   className,
+  onCreatedCampaign,
 }: {
   id: string;
   label?: string;
   className?: string;
+  onCreatedCampaign?: (campaignId: string) => void;
 }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
+  const [goal, setGoal] = useState<(typeof GOAL_OPTIONS)[number]>("Awareness");
+  const [platform, setPlatform] = useState<(typeof PLATFORM_OPTIONS)[number]>("Instagram");
+  const [ctaStyle, setCtaStyle] = useState("");
+  const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   async function handleCreate() {
-    const trimmed = name.trim();
-    if (trimmed.length < 2 || trimmed.length > 60) {
+    const trimmedName = name.trim();
+    const trimmedGoal = goal.trim();
+    const trimmedPlatform = platform.trim();
+    const trimmedCtaStyle = ctaStyle.trim();
+    const trimmedNotes = notes.trim();
+
+    if (trimmedName.length < 2 || trimmedName.length > 60) {
       setErrorMsg("Campaign name must be 2-60 characters.");
+      return;
+    }
+
+    if (trimmedGoal.length < 3 || trimmedGoal.length > 80) {
+      setErrorMsg("Goal must be 3-80 characters.");
+      return;
+    }
+
+    if (trimmedPlatform.length < 2 || trimmedPlatform.length > 40) {
+      setErrorMsg("Platform must be 2-40 characters.");
+      return;
+    }
+
+    if (trimmedCtaStyle && (trimmedCtaStyle.length < 2 || trimmedCtaStyle.length > 30)) {
+      setErrorMsg("CTA style must be 2-30 characters.");
       return;
     }
 
@@ -33,7 +76,14 @@ export function CreateCampaignButton({
       const res = await fetch(`/api/kits/${id}/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create_campaign", name: trimmed }),
+        body: JSON.stringify({
+          action: "create_campaign",
+          name: trimmedName,
+          goal: trimmedGoal,
+          platform: trimmedPlatform,
+          ...(trimmedCtaStyle ? { ctaStyle: trimmedCtaStyle } : {}),
+          ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -42,9 +92,26 @@ export function CreateCampaignButton({
         return;
       }
 
+      let createdCampaignId = "";
+      try {
+        const json = (await res.json()) as { campaignId?: unknown };
+        if (typeof json.campaignId === "string") {
+          createdCampaignId = json.campaignId;
+        }
+      } catch {
+        createdCampaignId = "";
+      }
+
       setName("");
+      setGoal("Awareness");
+      setPlatform("Instagram");
+      setCtaStyle("");
+      setNotes("");
       setIsSaving(false);
       setIsOpen(false);
+      if (createdCampaignId && onCreatedCampaign) {
+        onCreatedCampaign(createdCampaignId);
+      }
       router.refresh();
     } catch {
       setIsSaving(false);
@@ -74,6 +141,59 @@ export function CreateCampaignButton({
               value={name}
               onChange={(event) => setName(event.target.value)}
               maxLength={60}
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+            />
+          </label>
+
+          <label className="mt-3 block">
+            <span className="text-xs text-zinc-500">Goal</span>
+            <select
+              value={goal}
+              onChange={(event) => setGoal(event.target.value as (typeof GOAL_OPTIONS)[number])}
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+            >
+              {GOAL_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="mt-3 block">
+            <span className="text-xs text-zinc-500">Platform</span>
+            <select
+              value={platform}
+              onChange={(event) =>
+                setPlatform(event.target.value as (typeof PLATFORM_OPTIONS)[number])
+              }
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+            >
+              {PLATFORM_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="mt-3 block">
+            <span className="text-xs text-zinc-500">CTA style (optional)</span>
+            <input
+              value={ctaStyle}
+              onChange={(event) => setCtaStyle(event.target.value)}
+              maxLength={30}
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+            />
+          </label>
+
+          <label className="mt-3 block">
+            <span className="text-xs text-zinc-500">Notes (optional)</span>
+            <textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              rows={3}
+              maxLength={280}
               className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
             />
           </label>
