@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { generateCaptionPackAI } from "@/lib/ai/assets";
+import { readAssetCampaigns, type AssetCampaign } from "@/lib/assets-campaigns";
 
 export const runtime = "nodejs";
 
@@ -12,21 +13,6 @@ type CaptionPackOutput = {
   hooks: [string, string, string];
   captions: [string, string, string];
   notes?: string;
-};
-
-type CaptionPackInput = {
-  type: AssetType;
-  goal: string;
-  cta: string;
-  topic?: string;
-};
-
-type AssetItem = {
-  id: string;
-  type: AssetType;
-  createdAt: string;
-  input: CaptionPackInput;
-  output: CaptionPackOutput;
 };
 
 type BrandKitMeta = {
@@ -102,7 +88,8 @@ function normalizeOutputList(value: unknown, maxLen: number): string[] {
   return value
     .filter((entry): entry is string => typeof entry === "string")
     .map((entry) => entry.trim().slice(0, maxLen))
-    .filter((entry) => entry.length > 0);
+    .filter((entry) => entry.length > 0)
+    .slice(0, 3);
 }
 
 function normalizeCaptionPackOutput(value: unknown): CaptionPackOutput | null {
@@ -113,8 +100,8 @@ function normalizeCaptionPackOutput(value: unknown): CaptionPackOutput | null {
     notes?: unknown;
   };
 
-  const hooks = normalizeOutputList(candidate.hooks, 90).slice(0, 3);
-  const captions = normalizeOutputList(candidate.captions, 500).slice(0, 3);
+  const hooks = normalizeOutputList(candidate.hooks, 90);
+  const captions = normalizeOutputList(candidate.captions, 500);
   if (hooks.length !== 3 || captions.length !== 3) {
     return null;
   }
@@ -207,71 +194,11 @@ function sanitizeOutput(output: CaptionPackOutput, avoidWords: string[]): Captio
   };
 }
 
-function readExistingItems(value: unknown): AssetItem[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  const candidate = value as { items?: unknown };
-  if (!Array.isArray(candidate.items)) return [];
-
-  const parsed: AssetItem[] = [];
-
-  for (const item of candidate.items) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const entry = item as {
-      id?: unknown;
-      type?: unknown;
-      createdAt?: unknown;
-      input?: unknown;
-      output?: unknown;
-    };
-
-    if (
-      typeof entry.id !== "string" ||
-      entry.type !== "caption_pack" ||
-      typeof entry.createdAt !== "string"
-    ) {
-      continue;
-    }
-
-    const output = normalizeCaptionPackOutput(entry.output);
-    if (!output) continue;
-
-    const inputObj =
-      entry.input && typeof entry.input === "object" && !Array.isArray(entry.input)
-        ? (entry.input as {
-            type?: unknown;
-            goal?: unknown;
-            cta?: unknown;
-            topic?: unknown;
-          })
-        : null;
-
-    const goal = trimAndClamp(inputObj?.goal, 120);
-    const cta = trimAndClamp(inputObj?.cta, 120);
-    if (!goal || !cta) continue;
-
-    const topic = trimAndClamp(inputObj?.topic, 280);
-
-    parsed.push({
-      id: entry.id,
-      type: "caption_pack",
-      createdAt: entry.createdAt,
-      input: {
-        type: "caption_pack",
-        goal,
-        cta,
-        ...(topic ? { topic } : {}),
-      },
-      output,
-    });
-  }
-
-  return parsed;
-}
-
 async function generateAndNormalize(promptInput: Record<string, unknown>) {
   const raw = await generateCaptionPackAI(
     promptInput as Parameters<typeof generateCaptionPackAI>[0]
   );
+
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(raw);
@@ -280,6 +207,38 @@ async function generateAndNormalize(promptInput: Record<string, unknown>) {
   }
 
   return normalizeCaptionPackOutput(parsed);
+}
+
+function readKitJsonObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : {};
+}
+
+function updateMeta(existingKitJson: Record<string, any>, nowIso: string) {
+  const currentMeta = readMeta(existingKitJson.meta);
+  const nextVersion = (currentMeta.version ?? 1) + 1;
+
+  return {
+    ...currentMeta,
+    version: nextVersion,
+    updatedAt: nowIso,
+    assetsUpdatedAt: nowIso,
+  };
+}
+
+function saveCampaigns(
+  existingKitJson: Record<string, any>,
+  campaigns: AssetCampaign[],
+  nowIso: string
+) {
+  return {
+    ...existingKitJson,
+    assets: {
+      campaigns,
+    },
+    meta: updateMeta(existingKitJson, nowIso),
+  } as Prisma.InputJsonValue;
 }
 
 export async function POST(
@@ -299,9 +258,75 @@ export async function POST(
 
   try {
     const body = await req.json();
-    const type = body?.type;
+
+    const record = await prisma.brandKit.findFirst({
+      where: { id, userId },
+      select: {
+        id: true,
+        createdAt: true,
+        mode: true,
+        business: true,
+        vibe: true,
+        kitJson: true,
+      },
+    });
+
+    if (!record) {
+      return Response.json({ ok: false, error: "Not found" }, { status: 404 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const existingKitJson = readKitJsonObject(record.kitJson);
+    const campaigns = readAssetCampaigns(
+      existingKitJson.assets,
+      record.createdAt.toISOString()
+    );
+
+    if (body?.action === "create_campaign") {
+      const name = trimAndClamp(body?.name, 60);
+      if (name.length < 2) {
+        return Response.json(
+          { ok: false, error: "Campaign name must be 2-60 characters." },
+          { status: 400 }
+        );
+      }
+
+      const nextCampaigns: AssetCampaign[] = [
+        {
+          id: randomUUID(),
+          name,
+          createdAt: nowIso,
+          items: [],
+        },
+        ...campaigns,
+      ];
+
+      await prisma.brandKit.update({
+        where: { id: record.id },
+        data: {
+          kitJson: saveCampaigns(existingKitJson, nextCampaigns, nowIso),
+        },
+      });
+
+      return Response.json({ ok: true });
+    }
+
+    const type = body?.type as AssetType | undefined;
     if (type !== "caption_pack") {
       return Response.json({ ok: false, error: "Invalid type" }, { status: 400 });
+    }
+
+    const campaignId = trimAndClamp(body?.campaignId, 120);
+    if (!campaignId) {
+      return Response.json(
+        { ok: false, error: "campaignId is required." },
+        { status: 400 }
+      );
+    }
+
+    const campaignIndex = campaigns.findIndex((campaign) => campaign.id === campaignId);
+    if (campaignIndex === -1) {
+      return Response.json({ ok: false, error: "Invalid campaignId." }, { status: 400 });
     }
 
     const goal = trimAndClamp(body?.goal, 120);
@@ -315,46 +340,9 @@ export async function POST(
       );
     }
 
-    const record = await prisma.brandKit.findFirst({
-      where: { id, userId },
-      select: {
-        id: true,
-        mode: true,
-        business: true,
-        vibe: true,
-        kitJson: true,
-      },
-    });
-
-    if (!record) {
-      return Response.json({ ok: false, error: "Not found" }, { status: 404 });
-    }
-
-    const existingKitJson =
-      record.kitJson &&
-      typeof record.kitJson === "object" &&
-      !Array.isArray(record.kitJson)
-        ? (record.kitJson as Record<string, any>)
-        : {};
-
-    const profile =
-      existingKitJson.profile &&
-      typeof existingKitJson.profile === "object" &&
-      !Array.isArray(existingKitJson.profile)
-        ? (existingKitJson.profile as Record<string, unknown>)
-        : {};
-    const constraints =
-      profile.constraints &&
-      typeof profile.constraints === "object" &&
-      !Array.isArray(profile.constraints)
-        ? (profile.constraints as Record<string, unknown>)
-        : {};
-    const voiceAi =
-      existingKitJson.voiceAi &&
-      typeof existingKitJson.voiceAi === "object" &&
-      !Array.isArray(existingKitJson.voiceAi)
-        ? (existingKitJson.voiceAi as Record<string, unknown>)
-        : undefined;
+    const profile = readKitJsonObject(existingKitJson.profile);
+    const constraints = readKitJsonObject(profile.constraints);
+    const voiceAi = readKitJsonObject(existingKitJson.voiceAi);
     const avoidWords = normalizeWordList(constraints.avoidWords);
 
     const promptInput = {
@@ -398,21 +386,19 @@ export async function POST(
         allowWords: normalizeWordList(constraints.allowWords),
         avoidWords,
       },
-      voiceAi: voiceAi
-        ? {
-            voiceSummary:
-              typeof voiceAi.voiceSummary === "string" ? voiceAi.voiceSummary : undefined,
-            guidelines: Array.isArray(voiceAi.guidelines)
-              ? voiceAi.guidelines.filter((entry: unknown) => typeof entry === "string")
-              : undefined,
-            do: Array.isArray(voiceAi.do)
-              ? voiceAi.do.filter((entry: unknown) => typeof entry === "string")
-              : undefined,
-            dont: Array.isArray(voiceAi.dont)
-              ? voiceAi.dont.filter((entry: unknown) => typeof entry === "string")
-              : undefined,
-          }
-        : undefined,
+      voiceAi: {
+        voiceSummary:
+          typeof voiceAi.voiceSummary === "string" ? voiceAi.voiceSummary : undefined,
+        guidelines: Array.isArray(voiceAi.guidelines)
+          ? voiceAi.guidelines.filter((entry: unknown) => typeof entry === "string")
+          : undefined,
+        do: Array.isArray(voiceAi.do)
+          ? voiceAi.do.filter((entry: unknown) => typeof entry === "string")
+          : undefined,
+        dont: Array.isArray(voiceAi.dont)
+          ? voiceAi.dont.filter((entry: unknown) => typeof entry === "string")
+          : undefined,
+      },
     };
 
     let output = await generateAndNormalize(promptInput);
@@ -433,12 +419,7 @@ export async function POST(
       }
     }
 
-    const nowIso = new Date().toISOString();
-    const currentMeta = readMeta(existingKitJson.meta);
-    const nextVersion = (currentMeta.version ?? 1) + 1;
-    const existingItems = readExistingItems(existingKitJson.assets);
-
-    const nextItem: AssetItem = {
+    const nextItem = {
       id: randomUUID(),
       type: "caption_pack",
       createdAt: nowIso,
@@ -451,21 +432,19 @@ export async function POST(
       output,
     };
 
+    const nextCampaigns = campaigns.map((campaign, index) =>
+      index === campaignIndex
+        ? {
+            ...campaign,
+            items: [nextItem, ...campaign.items],
+          }
+        : campaign
+    );
+
     await prisma.brandKit.update({
       where: { id: record.id },
       data: {
-        kitJson: {
-          ...existingKitJson,
-          assets: {
-            items: [...existingItems, nextItem],
-          },
-          meta: {
-            ...currentMeta,
-            version: nextVersion,
-            updatedAt: nowIso,
-            assetsUpdatedAt: nowIso,
-          },
-        } as Prisma.InputJsonValue,
+        kitJson: saveCampaigns(existingKitJson, nextCampaigns, nowIso),
       },
     });
 
