@@ -237,6 +237,12 @@ export default async function KitDetailPage(
               <p className="text-sm text-zinc-400">
                 {new Date(record.createdAt).toLocaleString()}
               </p>
+              <Link
+                href={`/kits/${record.id}/assets`}
+                className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-100 hover:border-zinc-500"
+              >
+                Assets
+              </Link>
               <DeleteKitButton id={record.id} />
             </div>
           </div>
