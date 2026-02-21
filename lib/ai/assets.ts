@@ -80,12 +80,22 @@ export async function generateCaptionPackAI(
           "Respect brand constraints and avoid prohibited language.\n" +
           "JSON schema keys EXACTLY:\n" +
           "{\n" +
-          '  "hooks": [string, string, string],\n' +
-          '  "captions": [string, string, string],\n' +
-          '  "notes": string\n' +
+          '  "angle": string,\n' +
+          '  "hooks": [\n' +
+          '    { "style": "Curiosity"|"Pain"|"Proof", "text": string },\n' +
+          '    { "style": "Curiosity"|"Pain"|"Proof", "text": string },\n' +
+          '    { "style": "Curiosity"|"Pain"|"Proof", "text": string }\n' +
+          "  ],\n" +
+          '  "captions": [\n' +
+          '    { "text": string, "ctaLine": string },\n' +
+          '    { "text": string, "ctaLine": string },\n' +
+          '    { "text": string, "ctaLine": string }\n' +
+          "  ]\n" +
           "}\n" +
           "Rules:\n" +
-          "- hooks must be short and punchy.\n" +
+          "- angle: 1 concise sentence, <= 140 chars.\n" +
+          "- hooks: exactly 3, each style must be one of Curiosity/Pain/Proof and text <= 120 chars.\n" +
+          "- captions: exactly 3, each text <= 500 chars and ctaLine <= 90 chars.\n" +
           "- captions should be CTA-ready and platform-safe.\n" +
           "- respect avoidWords strictly: never include any avoidWords terms.\n" +
           "- use allowWords naturally when it fits; do not force repetition.\n" +
