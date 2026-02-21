@@ -100,7 +100,7 @@ export function AssetsList({
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-zinc-100">{campaign.name}</p>
                 <p className="text-xs text-zinc-500">
-                  {new Date(campaign.createdAt).toLocaleString()}
+                  {new Date(campaign.updatedAt ?? campaign.createdAt).toLocaleString()}
                 </p>
               </div>
 

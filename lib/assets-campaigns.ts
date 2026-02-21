@@ -9,13 +9,23 @@ export type AssetItem = {
 export type AssetCampaign = {
   id: string;
   name: string;
+  goal: string;
+  platform: string;
+  ctaStyle?: string;
+  notes?: string;
   createdAt: string;
+  updatedAt?: string;
   items: AssetItem[];
 };
 
 function readObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+function trimAndClamp(value: unknown, max: number) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
 }
 
 function safeDate(value: unknown, fallback: string) {
@@ -26,7 +36,9 @@ function safeDate(value: unknown, fallback: string) {
 
 function sortCampaigns(campaigns: AssetCampaign[]) {
   return [...campaigns].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) =>
+      new Date(b.updatedAt ?? b.createdAt).getTime() -
+      new Date(a.updatedAt ?? a.createdAt).getTime()
   );
 }
 
@@ -87,7 +99,18 @@ export function readAssetCampaigns(
       campaigns.push({
         id,
         name: name.slice(0, 60),
+        goal: trimAndClamp(entry.goal, 80),
+        platform: trimAndClamp(entry.platform, 40),
+        ...(trimAndClamp(entry.ctaStyle, 30)
+          ? { ctaStyle: trimAndClamp(entry.ctaStyle, 30) }
+          : {}),
+        ...(trimAndClamp(entry.notes, 280)
+          ? { notes: trimAndClamp(entry.notes, 280) }
+          : {}),
         createdAt: safeDate(entry.createdAt, fallbackCreatedAt),
+        ...(typeof entry.updatedAt === "string"
+          ? { updatedAt: safeDate(entry.updatedAt, fallbackCreatedAt) }
+          : {}),
         items: readItems(entry.items, fallbackCreatedAt),
       });
     }
@@ -102,7 +125,10 @@ export function readAssetCampaigns(
     {
       id: "general",
       name: "General",
+      goal: "",
+      platform: "",
       createdAt: fallbackCreatedAt,
+      updatedAt: fallbackCreatedAt,
       items: legacyItems,
     },
   ];
