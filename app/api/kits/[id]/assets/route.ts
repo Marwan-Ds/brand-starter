@@ -9,10 +9,20 @@ export const runtime = "nodejs";
 
 type AssetType = "caption_pack";
 
+const HOOK_STYLES = ["Curiosity", "Pain", "Proof"] as const;
+type CaptionPackHookStyle = (typeof HOOK_STYLES)[number];
+type CaptionPackHook = {
+  style: CaptionPackHookStyle;
+  text: string;
+};
+type CaptionPackCaption = {
+  text: string;
+  ctaLine: string;
+};
 type CaptionPackOutput = {
-  hooks: [string, string, string];
-  captions: [string, string, string];
-  notes?: string;
+  angle: string;
+  hooks: [CaptionPackHook, CaptionPackHook, CaptionPackHook];
+  captions: [CaptionPackCaption, CaptionPackCaption, CaptionPackCaption];
 };
 
 type BrandKitMeta = {
@@ -186,35 +196,102 @@ function readMeta(value: unknown): BrandKitMeta {
   };
 }
 
-function normalizeOutputList(value: unknown, maxLen: number): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => entry.trim().slice(0, maxLen))
-    .filter((entry) => entry.length > 0)
-    .slice(0, 3);
+function isHookStyle(value: unknown): value is CaptionPackHookStyle {
+  return (
+    typeof value === "string" &&
+    (HOOK_STYLES as readonly string[]).includes(value)
+  );
 }
 
-function normalizeCaptionPackOutput(value: unknown): CaptionPackOutput | null {
+function toTuple3<T>(items: T[]): [T, T, T] | null {
+  if (items.length < 3) return null;
+  return [items[0], items[1], items[2]];
+}
+
+function normalizeHookEntry(
+  value: unknown,
+  fallbackStyle: CaptionPackHookStyle
+): CaptionPackHook | null {
+  if (typeof value === "string") {
+    const text = trimAndClamp(value, 120);
+    if (!text) return null;
+    return { style: fallbackStyle, text };
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as { style?: unknown; text?: unknown };
+  if (!isHookStyle(candidate.style)) return null;
+
+  const text = trimAndClamp(candidate.text, 120);
+  if (!text) return null;
+
+  return {
+    style: candidate.style,
+    text,
+  };
+}
+
+function normalizeCaptionEntry(value: unknown): CaptionPackCaption | null {
+  if (typeof value === "string") {
+    const text = trimAndClamp(value, 500);
+    if (!text) return null;
+    return { text, ctaLine: "" };
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as { text?: unknown; ctaLine?: unknown };
+  const text = trimAndClamp(candidate.text, 500);
+  if (!text) return null;
+
+  return {
+    text,
+    ctaLine: trimAndClamp(candidate.ctaLine, 90),
+  };
+}
+
+function normalizeCaptionPackOutput(
+  value: unknown,
+  goal: string
+): CaptionPackOutput | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as {
+    angle?: unknown;
     hooks?: unknown;
     captions?: unknown;
-    notes?: unknown;
   };
 
-  const hooks = normalizeOutputList(candidate.hooks, 90);
-  const captions = normalizeOutputList(candidate.captions, 500);
-  if (hooks.length !== 3 || captions.length !== 3) {
+  if (!Array.isArray(candidate.hooks) || !Array.isArray(candidate.captions)) {
     return null;
   }
 
-  const notes = trimAndClamp(candidate.notes, 280);
+  const hooks: CaptionPackHook[] = [];
+  for (const hook of candidate.hooks) {
+    const normalized = normalizeHookEntry(hook, "Curiosity");
+    if (!normalized) continue;
+    hooks.push(normalized);
+    if (hooks.length === 3) break;
+  }
+
+  const captions: CaptionPackCaption[] = [];
+  for (const caption of candidate.captions) {
+    const normalized = normalizeCaptionEntry(caption);
+    if (!normalized) continue;
+    captions.push(normalized);
+    if (captions.length === 3) break;
+  }
+
+  const hooksTuple = toTuple3(hooks);
+  const captionsTuple = toTuple3(captions);
+  if (!hooksTuple || !captionsTuple) return null;
+
+  const angle =
+    trimAndClamp(candidate.angle, 140) ||
+    trimAndClamp(`Brand-aligned captions for ${goal}`, 140);
 
   return {
-    hooks: [hooks[0], hooks[1], hooks[2]],
-    captions: [captions[0], captions[1], captions[2]],
-    ...(notes ? { notes } : {}),
+    angle,
+    hooks: hooksTuple,
+    captions: captionsTuple,
   };
 }
 
@@ -225,7 +302,12 @@ function containsAvoidWord(text: string, avoidWords: string[]) {
 
 function hasAvoidWords(output: CaptionPackOutput, avoidWords: string[]) {
   if (avoidWords.length === 0) return false;
-  return [...output.hooks, ...output.captions].some((entry) =>
+  return [
+    output.angle,
+    ...output.hooks.map((entry) => entry.text),
+    ...output.captions.map((entry) => entry.text),
+    ...output.captions.map((entry) => entry.ctaLine),
+  ].some((entry) =>
     containsAvoidWord(entry, avoidWords)
   );
 }
@@ -251,53 +333,91 @@ function sanitizeEntry(value: string, avoidWords: string[], maxLen: number, fall
   return next || fallback;
 }
 
+function sanitizeOptionalEntry(value: string, avoidWords: string[], maxLen: number) {
+  let next = value;
+
+  for (const avoidWord of avoidWords) {
+    const pattern = new RegExp(escapeRegExp(avoidWord), "gi");
+    next = next.replace(pattern, "");
+  }
+
+  return next
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .trim()
+    .slice(0, maxLen);
+}
+
 function sanitizeOutput(output: CaptionPackOutput, avoidWords: string[]): CaptionPackOutput {
   return {
+    angle: sanitizeEntry(
+      output.angle,
+      avoidWords,
+      140,
+      "Brand-aligned captions for the selected goal."
+    ),
     hooks: [
-      sanitizeEntry(
-        output.hooks[0],
-        avoidWords,
-        90,
-        "Clear value for the right audience."
-      ),
-      sanitizeEntry(
-        output.hooks[1],
-        avoidWords,
-        90,
-        "Consistent message with stronger impact."
-      ),
-      sanitizeEntry(
-        output.hooks[2],
-        avoidWords,
-        90,
-        "A fresh angle that still fits your brand."
-      ),
+      {
+        style: output.hooks[0].style,
+        text: sanitizeEntry(
+          output.hooks[0].text,
+          avoidWords,
+          120,
+          "Clear value for the right audience."
+        ),
+      },
+      {
+        style: output.hooks[1].style,
+        text: sanitizeEntry(
+          output.hooks[1].text,
+          avoidWords,
+          120,
+          "Consistent message with stronger impact."
+        ),
+      },
+      {
+        style: output.hooks[2].style,
+        text: sanitizeEntry(
+          output.hooks[2].text,
+          avoidWords,
+          120,
+          "A fresh angle that still fits your brand."
+        ),
+      },
     ],
     captions: [
-      sanitizeEntry(
-        output.captions[0],
-        avoidWords,
-        500,
-        "Practical caption aligned with your brand voice and CTA."
-      ),
-      sanitizeEntry(
-        output.captions[1],
-        avoidWords,
-        500,
-        "Audience-focused caption that keeps your message clear."
-      ),
-      sanitizeEntry(
-        output.captions[2],
-        avoidWords,
-        500,
-        "Conversion-ready caption tailored to your brand direction."
-      ),
+      {
+        text: sanitizeEntry(
+          output.captions[0].text,
+          avoidWords,
+          500,
+          "Practical caption aligned with your brand voice and CTA."
+        ),
+        ctaLine: sanitizeOptionalEntry(output.captions[0].ctaLine, avoidWords, 90),
+      },
+      {
+        text: sanitizeEntry(
+          output.captions[1].text,
+          avoidWords,
+          500,
+          "Audience-focused caption that keeps your message clear."
+        ),
+        ctaLine: sanitizeOptionalEntry(output.captions[1].ctaLine, avoidWords, 90),
+      },
+      {
+        text: sanitizeEntry(
+          output.captions[2].text,
+          avoidWords,
+          500,
+          "Conversion-ready caption tailored to your brand direction."
+        ),
+        ctaLine: sanitizeOptionalEntry(output.captions[2].ctaLine, avoidWords, 90),
+      },
     ],
-    ...(output.notes ? { notes: output.notes } : {}),
   };
 }
 
-async function generateAndNormalize(promptInput: Record<string, unknown>) {
+async function generateAndNormalize(promptInput: Record<string, unknown>, goal: string) {
   const raw = await generateCaptionPackAI(
     promptInput as Parameters<typeof generateCaptionPackAI>[0]
   );
@@ -309,7 +429,7 @@ async function generateAndNormalize(promptInput: Record<string, unknown>) {
     parsed = null;
   }
 
-  return normalizeCaptionPackOutput(parsed);
+  return normalizeCaptionPackOutput(parsed, goal);
 }
 
 function readKitJsonObject(value: unknown) {
@@ -615,7 +735,7 @@ export async function POST(
       },
     };
 
-    let output = await generateAndNormalize(promptInput);
+    let output = await generateAndNormalize(promptInput, goal);
     if (!output) {
       return Response.json(
         { ok: false, error: "Could not generate valid assets." },
@@ -624,7 +744,7 @@ export async function POST(
     }
 
     if (hasAvoidWords(output, avoidWords)) {
-      const regenerated = await generateAndNormalize(promptInput);
+      const regenerated = await generateAndNormalize(promptInput, goal);
       if (regenerated) {
         output = regenerated;
       }
@@ -636,6 +756,7 @@ export async function POST(
     const nextItem = {
       id: randomUUID(),
       type: "caption_pack",
+      outputVersion: 2,
       createdAt: nowIso,
       input: {
         type: "caption_pack",
