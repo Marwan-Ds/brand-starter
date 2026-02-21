@@ -8,8 +8,12 @@ import { readAssetCampaigns, type AssetCampaign } from "@/lib/assets-campaigns";
 export const runtime = "nodejs";
 
 type AssetType = "caption_pack";
+type CaptionPackVariantMode = "hooks_only" | "captions_only" | "ctas_only";
+type CaptionPackVariantTone = "softer" | "default" | "bolder";
 
 const HOOK_STYLES = ["Curiosity", "Pain", "Proof"] as const;
+const VARIANT_MODES = ["hooks_only", "captions_only", "ctas_only"] as const;
+const VARIANT_TONES = ["softer", "default", "bolder"] as const;
 type CaptionPackHookStyle = (typeof HOOK_STYLES)[number];
 type CaptionPackHook = {
   style: CaptionPackHookStyle;
@@ -23,6 +27,11 @@ type CaptionPackOutput = {
   angle: string;
   hooks: [CaptionPackHook, CaptionPackHook, CaptionPackHook];
   captions: [CaptionPackCaption, CaptionPackCaption, CaptionPackCaption];
+};
+
+type CaptionPackVariantInfo = {
+  mode: CaptionPackVariantMode;
+  tone: CaptionPackVariantTone;
 };
 
 type BrandKitMeta = {
@@ -200,6 +209,20 @@ function isHookStyle(value: unknown): value is CaptionPackHookStyle {
   return (
     typeof value === "string" &&
     (HOOK_STYLES as readonly string[]).includes(value)
+  );
+}
+
+function isVariantMode(value: unknown): value is CaptionPackVariantMode {
+  return (
+    typeof value === "string" &&
+    (VARIANT_MODES as readonly string[]).includes(value)
+  );
+}
+
+function isVariantTone(value: unknown): value is CaptionPackVariantTone {
+  return (
+    typeof value === "string" &&
+    (VARIANT_TONES as readonly string[]).includes(value)
   );
 }
 
@@ -417,6 +440,136 @@ function sanitizeOutput(output: CaptionPackOutput, avoidWords: string[]): Captio
   };
 }
 
+function mergeVariantOutput(
+  parent: CaptionPackOutput,
+  generated: CaptionPackOutput,
+  mode: CaptionPackVariantMode
+): CaptionPackOutput {
+  if (mode === "hooks_only") {
+    return {
+      angle: parent.angle,
+      hooks: generated.hooks,
+      captions: parent.captions,
+    };
+  }
+
+  if (mode === "captions_only") {
+    return {
+      angle: parent.angle,
+      hooks: parent.hooks,
+      captions: generated.captions,
+    };
+  }
+
+  return {
+    angle: parent.angle,
+    hooks: parent.hooks,
+    captions: [
+      { text: parent.captions[0].text, ctaLine: generated.captions[0].ctaLine },
+      { text: parent.captions[1].text, ctaLine: generated.captions[1].ctaLine },
+      { text: parent.captions[2].text, ctaLine: generated.captions[2].ctaLine },
+    ],
+  };
+}
+
+function sanitizeVariantOutput(
+  output: CaptionPackOutput,
+  parent: CaptionPackOutput,
+  mode: CaptionPackVariantMode,
+  avoidWords: string[]
+): CaptionPackOutput {
+  if (mode === "hooks_only") {
+    return {
+      angle: parent.angle,
+      hooks: [
+        {
+          style: output.hooks[0].style,
+          text: sanitizeEntry(
+            output.hooks[0].text,
+            avoidWords,
+            120,
+            "Clear value for the right audience."
+          ),
+        },
+        {
+          style: output.hooks[1].style,
+          text: sanitizeEntry(
+            output.hooks[1].text,
+            avoidWords,
+            120,
+            "Consistent message with stronger impact."
+          ),
+        },
+        {
+          style: output.hooks[2].style,
+          text: sanitizeEntry(
+            output.hooks[2].text,
+            avoidWords,
+            120,
+            "A fresh angle that still fits your brand."
+          ),
+        },
+      ],
+      captions: parent.captions,
+    };
+  }
+
+  if (mode === "captions_only") {
+    return {
+      angle: parent.angle,
+      hooks: parent.hooks,
+      captions: [
+        {
+          text: sanitizeEntry(
+            output.captions[0].text,
+            avoidWords,
+            500,
+            "Practical caption aligned with your brand voice and CTA."
+          ),
+          ctaLine: sanitizeOptionalEntry(output.captions[0].ctaLine, avoidWords, 90),
+        },
+        {
+          text: sanitizeEntry(
+            output.captions[1].text,
+            avoidWords,
+            500,
+            "Audience-focused caption that keeps your message clear."
+          ),
+          ctaLine: sanitizeOptionalEntry(output.captions[1].ctaLine, avoidWords, 90),
+        },
+        {
+          text: sanitizeEntry(
+            output.captions[2].text,
+            avoidWords,
+            500,
+            "Conversion-ready caption tailored to your brand direction."
+          ),
+          ctaLine: sanitizeOptionalEntry(output.captions[2].ctaLine, avoidWords, 90),
+        },
+      ],
+    };
+  }
+
+  return {
+    angle: parent.angle,
+    hooks: parent.hooks,
+    captions: [
+      {
+        text: parent.captions[0].text,
+        ctaLine: sanitizeOptionalEntry(output.captions[0].ctaLine, avoidWords, 90),
+      },
+      {
+        text: parent.captions[1].text,
+        ctaLine: sanitizeOptionalEntry(output.captions[1].ctaLine, avoidWords, 90),
+      },
+      {
+        text: parent.captions[2].text,
+        ctaLine: sanitizeOptionalEntry(output.captions[2].ctaLine, avoidWords, 90),
+      },
+    ],
+  };
+}
+
 async function generateAndNormalize(promptInput: Record<string, unknown>, goal: string) {
   const raw = await generateCaptionPackAI(
     promptInput as Parameters<typeof generateCaptionPackAI>[0]
@@ -616,6 +769,227 @@ export async function POST(
 
         return nextCampaign;
       });
+
+      await prisma.brandKit.update({
+        where: { id: record.id },
+        data: {
+          kitJson: saveCampaigns(existingKitJson, nextCampaigns, nowIso),
+        },
+      });
+
+      return Response.json({ ok: true });
+    }
+
+    if (body.action === "variant_caption_pack") {
+      const campaignId = trimAndClamp(body.campaignId, 120);
+      if (!campaignId) {
+        return Response.json(
+          { ok: false, error: "campaignId is required." },
+          { status: 400 }
+        );
+      }
+
+      const campaignIndex = campaigns.findIndex((campaign) => campaign.id === campaignId);
+      if (campaignIndex === -1) {
+        return Response.json({ ok: false, error: "Invalid campaignId." }, { status: 400 });
+      }
+
+      const parentItemId = trimAndClamp(body.parentItemId, 120);
+      if (!parentItemId) {
+        return Response.json(
+          { ok: false, error: "parentItemId is required." },
+          { status: 400 }
+        );
+      }
+
+      if (!isVariantMode(body.mode)) {
+        return Response.json({ ok: false, error: "Invalid mode." }, { status: 400 });
+      }
+      if (!isVariantTone(body.tone)) {
+        return Response.json({ ok: false, error: "Invalid tone." }, { status: 400 });
+      }
+
+      const mode = body.mode;
+      const tone = body.tone;
+      const selectedCampaign = campaigns[campaignIndex];
+      const parentItem = selectedCampaign.items.find((item) => item.id === parentItemId);
+      if (!parentItem) {
+        return Response.json({ ok: false, error: "Parent item not found." }, { status: 400 });
+      }
+
+      if (parentItem.type !== "caption_pack" || parentItem.outputVersion !== 2) {
+        return Response.json(
+          { ok: false, error: "Parent must be a caption pack V2 item." },
+          { status: 400 }
+        );
+      }
+      if (parentItem.parentId) {
+        return Response.json(
+          { ok: false, error: "Parent item must be a top-level caption pack." },
+          { status: 400 }
+        );
+      }
+
+      const goal = trimAndClamp(parentItem.input.goal, 120);
+      const cta = trimAndClamp(parentItem.input.cta, 120);
+      const topic = trimAndClamp(parentItem.input.topic, 280);
+      if (!goal || !cta) {
+        return Response.json(
+          { ok: false, error: "Parent input is missing goal/cta." },
+          { status: 400 }
+        );
+      }
+
+      const parentOutput = normalizeCaptionPackOutput(parentItem.output, goal);
+      if (!parentOutput) {
+        return Response.json(
+          { ok: false, error: "Parent output is invalid." },
+          { status: 400 }
+        );
+      }
+
+      const profile = readKitJsonObject(existingKitJson.profile);
+      const constraints = readKitJsonObject(profile.constraints);
+      const voiceAi = readKitJsonObject(existingKitJson.voiceAi);
+      const avoidWords = normalizeWordList(constraints.avoidWords);
+
+      const promptInput = {
+        mode: record.mode,
+        business: record.business,
+        vibe: record.vibe,
+        campaign: {
+          id: selectedCampaign.id,
+          name: selectedCampaign.name,
+          goal: selectedCampaign.goal,
+          platform: selectedCampaign.platform,
+          ctaStyle: selectedCampaign.ctaStyle,
+          toneOverride: selectedCampaign.toneOverride,
+          notes: selectedCampaign.notes,
+        },
+        goal,
+        cta,
+        ...(topic ? { topic } : {}),
+        variantRequest: {
+          mode,
+          tone,
+        },
+        reference: {
+          parentItemId,
+          parentOutput,
+          keepUnchanged:
+            mode === "hooks_only"
+              ? "Keep angle and captions unchanged."
+              : mode === "captions_only"
+                ? "Keep angle and hooks unchanged."
+                : "Keep angle, hooks, and caption text unchanged. Update ctaLine only.",
+        },
+        visual: {
+          primary: typeof existingKitJson.primary === "string" ? existingKitJson.primary : undefined,
+          secondary:
+            typeof existingKitJson.secondary === "string"
+              ? existingKitJson.secondary
+              : undefined,
+          accent: typeof existingKitJson.accent === "string" ? existingKitJson.accent : undefined,
+          neutrals: Array.isArray(existingKitJson.neutrals)
+            ? existingKitJson.neutrals.filter((entry: unknown) => typeof entry === "string")
+            : undefined,
+          headlineFont:
+            typeof existingKitJson.headlineFont === "string"
+              ? existingKitJson.headlineFont
+              : undefined,
+          bodyFont:
+            typeof existingKitJson.bodyFont === "string" ? existingKitJson.bodyFont : undefined,
+        },
+        profile: {
+          name: typeof profile.name === "string" ? profile.name : undefined,
+          audience: typeof profile.audience === "string" ? profile.audience : undefined,
+          description:
+            typeof profile.description === "string" ? profile.description : undefined,
+          tone:
+            profile.tone && typeof profile.tone === "object" && !Array.isArray(profile.tone)
+              ? profile.tone
+              : undefined,
+          constraints: {
+            formality: constraints.formality,
+            humor: constraints.humor,
+            intensity: constraints.intensity,
+            allowWords: normalizeWordList(constraints.allowWords),
+            avoidWords,
+          },
+        },
+        constraints: {
+          formality: constraints.formality,
+          humor: constraints.humor,
+          intensity: constraints.intensity,
+          allowWords: normalizeWordList(constraints.allowWords),
+          avoidWords,
+        },
+        voiceAi: {
+          voiceSummary:
+            typeof voiceAi.voiceSummary === "string" ? voiceAi.voiceSummary : undefined,
+          guidelines: Array.isArray(voiceAi.guidelines)
+            ? voiceAi.guidelines.filter((entry: unknown) => typeof entry === "string")
+            : undefined,
+          do: Array.isArray(voiceAi.do)
+            ? voiceAi.do.filter((entry: unknown) => typeof entry === "string")
+            : undefined,
+          dont: Array.isArray(voiceAi.dont)
+            ? voiceAi.dont.filter((entry: unknown) => typeof entry === "string")
+            : undefined,
+        },
+      };
+
+      let generated = await generateAndNormalize(promptInput, goal);
+      if (!generated) {
+        return Response.json(
+          { ok: false, error: "Could not generate valid assets." },
+          { status: 500 }
+        );
+      }
+
+      let mergedOutput = mergeVariantOutput(parentOutput, generated, mode);
+      if (hasAvoidWords(mergedOutput, avoidWords)) {
+        const regenerated = await generateAndNormalize(promptInput, goal);
+        if (regenerated) {
+          generated = regenerated;
+          mergedOutput = mergeVariantOutput(parentOutput, regenerated, mode);
+        }
+      }
+
+      const nextOutput = sanitizeVariantOutput(
+        mergedOutput,
+        parentOutput,
+        mode,
+        avoidWords
+      );
+
+      const nextItem = {
+        id: randomUUID(),
+        type: "caption_pack",
+        outputVersion: 2,
+        createdAt: nowIso,
+        parentId: parentItemId,
+        variant: {
+          mode,
+          tone,
+        } satisfies CaptionPackVariantInfo,
+        input: {
+          ...parentItem.input,
+          mode,
+          tone,
+        },
+        output: nextOutput,
+      };
+
+      const nextCampaigns = campaigns.map((campaign, index) =>
+        index === campaignIndex
+          ? {
+              ...campaign,
+              updatedAt: nowIso,
+              items: [nextItem, ...campaign.items],
+            }
+          : campaign
+      );
 
       await prisma.brandKit.update({
         where: { id: record.id },
