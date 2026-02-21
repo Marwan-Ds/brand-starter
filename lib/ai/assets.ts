@@ -10,6 +10,7 @@ type GenerateCaptionPackAIInput = {
     goal?: string;
     platform?: string;
     ctaStyle?: string;
+    toneOverride?: string;
     notes?: string;
   };
   goal: string;
@@ -32,6 +33,13 @@ type GenerateCaptionPackAIInput = {
       playful?: number;
       formal?: number;
       emotional?: number;
+    };
+    constraints?: {
+      formality?: number;
+      humor?: number;
+      intensity?: number;
+      allowWords?: string[];
+      avoidWords?: string[];
     };
   };
   constraints?: {
@@ -79,6 +87,10 @@ export async function generateCaptionPackAI(
           "Rules:\n" +
           "- hooks must be short and punchy.\n" +
           "- captions should be CTA-ready and platform-safe.\n" +
+          "- respect avoidWords strictly: never include any avoidWords terms.\n" +
+          "- use allowWords naturally when it fits; do not force repetition.\n" +
+          "- adapt structure and length to platform context (shorter lines for fast-scroll platforms, more context for professional channels).\n" +
+          "- adjust energy and punch based on goal and campaign.toneOverride when provided.\n" +
           "- avoid generic filler copy and repetition.",
       },
       {

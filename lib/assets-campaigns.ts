@@ -12,6 +12,7 @@ export type AssetCampaign = {
   goal: string;
   platform: string;
   ctaStyle?: string;
+  toneOverride?: string;
   notes?: string;
   createdAt: string;
   updatedAt?: string;
@@ -103,6 +104,9 @@ export function readAssetCampaigns(
         platform: trimAndClamp(entry.platform, 40),
         ...(trimAndClamp(entry.ctaStyle, 30)
           ? { ctaStyle: trimAndClamp(entry.ctaStyle, 30) }
+          : {}),
+        ...(trimAndClamp(entry.toneOverride, 60)
+          ? { toneOverride: trimAndClamp(entry.toneOverride, 60) }
           : {}),
         ...(trimAndClamp(entry.notes, 280)
           ? { notes: trimAndClamp(entry.notes, 280) }

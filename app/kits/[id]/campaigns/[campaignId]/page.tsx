@@ -74,6 +74,7 @@ export default async function KitCampaignDetailPage(
               goal: campaign.goal,
               platform: campaign.platform,
               ctaStyle: campaign.ctaStyle,
+              toneOverride: campaign.toneOverride,
               notes: campaign.notes,
             }}
           />
