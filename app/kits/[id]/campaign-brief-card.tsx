@@ -1,0 +1,504 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { CampaignBrief } from "@/lib/assets-campaigns";
+
+type BriefForm = {
+  angle: string;
+  promise: string;
+  proofPoints: [string, string, string];
+  pillars: [string, string, string];
+  objections: Array<{ objection: string; response: string }>;
+  do: string[];
+  dont: string[];
+};
+
+function briefToForm(brief?: CampaignBrief): BriefForm {
+  return {
+    angle: brief?.angle ?? "",
+    promise: brief?.promise ?? "",
+    proofPoints: brief?.proofPoints ?? ["", "", ""],
+    pillars: brief?.pillars ?? ["", "", ""],
+    objections: brief?.objections?.length
+      ? brief.objections
+      : [
+          { objection: "", response: "" },
+          { objection: "", response: "" },
+        ],
+    do: brief?.do?.length ? brief.do : ["", "", ""],
+    dont: brief?.dont?.length ? brief.dont : ["", "", ""],
+  };
+}
+
+export function CampaignBriefCard({
+  id,
+  campaignId,
+  initialBrief,
+  initialSource,
+  initialUpdatedAt,
+}: {
+  id: string;
+  campaignId: string;
+  initialBrief?: CampaignBrief;
+  initialSource?: "ai" | "user";
+  initialUpdatedAt?: string;
+}) {
+  const router = useRouter();
+  const [isEditing, setIsEditing] = useState(false);
+  const [form, setForm] = useState<BriefForm>(() => briefToForm(initialBrief));
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const hasBrief = Boolean(initialBrief);
+
+  const canSave = useMemo(() => {
+    const hasObjections =
+      form.objections.length >= 2 &&
+      form.objections.length <= 3 &&
+      form.objections.every(
+        (entry) => entry.objection.trim().length > 0 && entry.response.trim().length > 0
+      );
+
+    return (
+      form.angle.trim().length > 0 &&
+      form.promise.trim().length > 0 &&
+      form.proofPoints.every((entry) => entry.trim().length > 0) &&
+      form.pillars.every((entry) => entry.trim().length > 0) &&
+      form.do.length >= 3 &&
+      form.do.length <= 6 &&
+      form.do.every((entry) => entry.trim().length > 0) &&
+      form.dont.length >= 3 &&
+      form.dont.length <= 6 &&
+      form.dont.every((entry) => entry.trim().length > 0) &&
+      hasObjections &&
+      !isSaving &&
+      !isGenerating
+    );
+  }, [form, isGenerating, isSaving]);
+
+  async function handleGenerate() {
+    if (isGenerating || isSaving) return;
+    setIsGenerating(true);
+    setErrorMsg("");
+    setSaved(false);
+
+    try {
+      const res = await fetch(`/api/kits/${id}/campaigns/${campaignId}/intelligence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate_brief" }),
+      });
+
+      if (!res.ok) {
+        setIsGenerating(false);
+        setErrorMsg("Could not generate campaign brief.");
+        return;
+      }
+
+      setIsGenerating(false);
+      setSaved(true);
+      router.refresh();
+      window.setTimeout(() => setSaved(false), 1000);
+    } catch {
+      setIsGenerating(false);
+      setErrorMsg("Could not generate campaign brief.");
+    }
+  }
+
+  async function handleSave() {
+    if (!canSave) return;
+    setIsSaving(true);
+    setErrorMsg("");
+    setSaved(false);
+
+    try {
+      const res = await fetch(`/api/kits/${id}/campaigns/${campaignId}/intelligence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_brief",
+          brief: {
+            angle: form.angle,
+            promise: form.promise,
+            proofPoints: form.proofPoints,
+            pillars: form.pillars,
+            objections: form.objections,
+            do: form.do,
+            dont: form.dont,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        setIsSaving(false);
+        setErrorMsg("Could not save campaign brief.");
+        return;
+      }
+
+      setIsSaving(false);
+      setIsEditing(false);
+      setSaved(true);
+      router.refresh();
+      window.setTimeout(() => setSaved(false), 1000);
+    } catch {
+      setIsSaving(false);
+      setErrorMsg("Could not save campaign brief.");
+    }
+  }
+
+  function resetForm() {
+    setForm(briefToForm(initialBrief));
+    setErrorMsg("");
+    setSaved(false);
+    setIsEditing(false);
+  }
+
+  return (
+    <section className="rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Campaign Brief</h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            AI-generated first, then editable for your campaign.
+          </p>
+          {hasBrief && initialUpdatedAt ? (
+            <p className="mt-1 text-xs text-zinc-500">
+              {initialSource === "user" ? "Edited by user" : "Generated by AI"} •{" "}
+              {new Date(initialUpdatedAt).toLocaleString()}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={isGenerating || isSaving}
+            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:border-zinc-500 disabled:opacity-60"
+          >
+            {isGenerating
+              ? "Generating..."
+              : hasBrief
+                ? "Regenerate"
+                : "Generate brief (AI)"}
+          </button>
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                onClick={resetForm}
+                disabled={isSaving || isGenerating}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!canSave}
+                className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-950 hover:bg-zinc-200 disabled:opacity-60"
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </>
+          ) : hasBrief ? (
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              disabled={isGenerating}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-60"
+            >
+              Edit
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {!hasBrief && !isEditing ? (
+        <p className="mt-4 text-sm text-zinc-400">
+          Generate the first brief to unlock editing and reuse across assets.
+        </p>
+      ) : null}
+
+      {isEditing ? (
+        <div className="mt-5 space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs text-zinc-500">Angle</span>
+              <input
+                value={form.angle}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, angle: event.target.value }))
+                }
+                maxLength={180}
+                className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs text-zinc-500">Promise</span>
+              <input
+                value={form.promise}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, promise: event.target.value }))
+                }
+                maxLength={200}
+                className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-zinc-500">Proof points (3)</p>
+              <div className="mt-2 space-y-2">
+                {form.proofPoints.map((entry, index) => (
+                  <input
+                    key={`proof-${index}`}
+                    value={entry}
+                    onChange={(event) =>
+                      setForm((current) => {
+                        const next = [...current.proofPoints] as [string, string, string];
+                        next[index] = event.target.value;
+                        return { ...current, proofPoints: next };
+                      })
+                    }
+                    maxLength={180}
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-zinc-500">Pillars (3)</p>
+              <div className="mt-2 space-y-2">
+                {form.pillars.map((entry, index) => (
+                  <input
+                    key={`pillar-${index}`}
+                    value={entry}
+                    onChange={(event) =>
+                      setForm((current) => {
+                        const next = [...current.pillars] as [string, string, string];
+                        next[index] = event.target.value;
+                        return { ...current, pillars: next };
+                      })
+                    }
+                    maxLength={140}
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-zinc-500">Objections (2-3)</p>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((current) =>
+                    current.objections.length >= 3
+                      ? current
+                      : {
+                          ...current,
+                          objections: [...current.objections, { objection: "", response: "" }],
+                        }
+                  )
+                }
+                className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+                disabled={form.objections.length >= 3}
+              >
+                Add
+              </button>
+            </div>
+            <div className="mt-2 space-y-2">
+              {form.objections.map((entry, index) => (
+                <div key={`objection-${index}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <input
+                    value={entry.objection}
+                    onChange={(event) =>
+                      setForm((current) => {
+                        const next = current.objections.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, objection: event.target.value }
+                            : item
+                        );
+                        return { ...current, objections: next };
+                      })
+                    }
+                    maxLength={180}
+                    placeholder="Objection"
+                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  />
+                  <input
+                    value={entry.response}
+                    onChange={(event) =>
+                      setForm((current) => {
+                        const next = current.objections.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, response: event.target.value }
+                            : item
+                        );
+                        return { ...current, objections: next };
+                      })
+                    }
+                    maxLength={220}
+                    placeholder="Response"
+                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((current) =>
+                        current.objections.length <= 2
+                          ? current
+                          : {
+                              ...current,
+                              objections: current.objections.filter((_, i) => i !== index),
+                            }
+                      )
+                    }
+                    className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+                    disabled={form.objections.length <= 2}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {(["do", "dont"] as const).map((key) => (
+              <div key={key}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">{key}</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((current) =>
+                        current[key].length >= 6
+                          ? current
+                          : { ...current, [key]: [...current[key], ""] }
+                      )
+                    }
+                    className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+                    disabled={form[key].length >= 6}
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="mt-2 space-y-2">
+                  {form[key].map((entry, index) => (
+                    <div key={`${key}-${index}`} className="grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        value={entry}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            [key]: current[key].map((item, itemIndex) =>
+                              itemIndex === index ? event.target.value : item
+                            ),
+                          }))
+                        }
+                        maxLength={120}
+                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((current) =>
+                            current[key].length <= 3
+                              ? current
+                              : {
+                                  ...current,
+                                  [key]: current[key].filter((_, itemIndex) => itemIndex !== index),
+                                }
+                          )
+                        }
+                        className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-zinc-500 disabled:opacity-50"
+                        disabled={form[key].length <= 3}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : initialBrief ? (
+        <div className="mt-5 space-y-4 text-sm">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Angle</p>
+            <p className="mt-1 text-zinc-100">{initialBrief.angle}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Promise</p>
+            <p className="mt-1 text-zinc-100">{initialBrief.promise}</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Proof points</p>
+              <ul className="mt-2 space-y-1 text-zinc-100">
+                {initialBrief.proofPoints.map((entry, index) => (
+                  <li key={`proof-view-${index}`}>• {entry}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Pillars</p>
+              <ul className="mt-2 space-y-1 text-zinc-100">
+                {initialBrief.pillars.map((entry, index) => (
+                  <li key={`pillar-view-${index}`}>• {entry}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Objections</p>
+            <div className="mt-2 space-y-2">
+              {initialBrief.objections.map((entry, index) => (
+                <div
+                  key={`objection-view-${index}`}
+                  className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"
+                >
+                  <p className="text-zinc-100">{entry.objection}</p>
+                  <p className="mt-1 text-zinc-400">{entry.response}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Do</p>
+              <ul className="mt-2 space-y-1 text-zinc-100">
+                {initialBrief.do.map((entry, index) => (
+                  <li key={`do-view-${index}`}>• {entry}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Dont</p>
+              <ul className="mt-2 space-y-1 text-zinc-100">
+                {initialBrief.dont.map((entry, index) => (
+                  <li key={`dont-view-${index}`}>• {entry}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {saved ? (
+        <p className="mt-3 text-xs text-emerald-300">
+          {isEditing ? "Saved" : "Updated"}
+        </p>
+      ) : null}
+      {errorMsg ? <p className="mt-3 text-xs text-red-300">{errorMsg}</p> : null}
+    </section>
+  );
+}

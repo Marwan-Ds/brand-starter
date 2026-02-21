@@ -7,6 +7,7 @@ import { readAssetCampaigns } from "@/lib/assets-campaigns";
 import { AssetsGeneratorCard } from "../../assets-generator-card";
 import { AssetsList } from "../../assets-list";
 import { CampaignContextCard } from "../../campaign-context-card";
+import { CampaignBriefCard } from "../../campaign-brief-card";
 
 export default async function KitCampaignDetailPage(
   { params }: { params: Promise<{ id: string; campaignId: string }> }
@@ -78,6 +79,16 @@ export default async function KitCampaignDetailPage(
               notes: campaign.notes,
             }}
           />
+
+          <div className="mt-6">
+            <CampaignBriefCard
+              id={record.id}
+              campaignId={campaign.id}
+              initialBrief={campaign.intelligence?.brief}
+              initialSource={campaign.intelligence?.source}
+              initialUpdatedAt={campaign.intelligence?.updatedAt}
+            />
+          </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <AssetsGeneratorCard
