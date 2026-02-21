@@ -1,7 +1,13 @@
 export type AssetItem = {
   id: string;
   type: string;
+  outputVersion?: number;
   createdAt: string;
+  parentId?: string;
+  variant?: {
+    mode: "hooks_only" | "captions_only" | "ctas_only";
+    tone: "softer" | "default" | "bolder";
+  };
   input: Record<string, unknown>;
   output: Record<string, unknown>;
 };
@@ -53,6 +59,8 @@ function readItems(value: unknown, fallbackCreatedAt: string): AssetItem[] {
   if (!Array.isArray(value)) return [];
 
   const items: AssetItem[] = [];
+  const variantModes = new Set(["hooks_only", "captions_only", "ctas_only"]);
+  const variantTones = new Set(["softer", "default", "bolder"]);
 
   for (const item of value) {
     const entry = readObject(item);
@@ -66,13 +74,38 @@ function readItems(value: unknown, fallbackCreatedAt: string): AssetItem[] {
     const output = readObject(entry.output);
     if (!input || !output) continue;
 
-    items.push({
+    const outputVersion =
+      typeof entry.outputVersion === "number" &&
+      Number.isFinite(entry.outputVersion) &&
+      entry.outputVersion > 0
+        ? Math.floor(entry.outputVersion)
+        : undefined;
+    const parentId = trimAndClamp(entry.parentId, 120);
+    const variantObj = readObject(entry.variant);
+    const variantMode = trimAndClamp(variantObj?.mode, 30);
+    const variantTone = trimAndClamp(variantObj?.tone, 20);
+
+    const parsed: AssetItem = {
       id,
       type,
       createdAt: safeDate(entry.createdAt, fallbackCreatedAt),
+      ...(outputVersion ? { outputVersion } : {}),
+      ...(parentId ? { parentId } : {}),
+      ...(variantObj &&
+      variantModes.has(variantMode) &&
+      variantTones.has(variantTone)
+        ? {
+            variant: {
+              mode: variantMode as "hooks_only" | "captions_only" | "ctas_only",
+              tone: variantTone as "softer" | "default" | "bolder",
+            },
+          }
+        : {}),
       input,
       output,
-    });
+    };
+
+    items.push(parsed);
   }
 
   return sortItems(items);
