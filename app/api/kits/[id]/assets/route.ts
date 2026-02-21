@@ -27,6 +27,7 @@ type CampaignContextInput = {
   goal: string;
   platform: string;
   ctaStyle?: string;
+  toneOverride?: string;
   notes?: string;
 };
 
@@ -44,6 +45,7 @@ function readCreateCampaignContext(body: Record<string, unknown>) {
   const goal = trimAndClamp(body.goal, 80);
   const platform = trimAndClamp(body.platform, 40);
   const ctaStyle = normalizeOptionalField(body.ctaStyle, 30);
+  const toneOverride = normalizeOptionalField(body.toneOverride, 60);
   const notes = normalizeOptionalField(body.notes, 280);
 
   if (goal.length < 3) {
@@ -58,11 +60,16 @@ function readCreateCampaignContext(body: Record<string, unknown>) {
     return { error: "CTA style must be 2-30 characters." } as const;
   }
 
+  if (body.toneOverride !== undefined && !toneOverride) {
+    return { error: "Tone override must be 2-60 characters." } as const;
+  }
+
   return {
     data: {
       goal,
       platform,
       ...(ctaStyle ? { ctaStyle } : {}),
+      ...(toneOverride ? { toneOverride } : {}),
       ...(notes ? { notes } : {}),
     } satisfies CampaignContextInput,
   } as const;
@@ -72,9 +79,10 @@ function readUpdateCampaignContext(body: Record<string, unknown>) {
   const hasGoal = body.goal !== undefined;
   const hasPlatform = body.platform !== undefined;
   const hasCtaStyle = body.ctaStyle !== undefined;
+  const hasToneOverride = body.toneOverride !== undefined;
   const hasNotes = body.notes !== undefined;
 
-  if (!hasGoal && !hasPlatform && !hasCtaStyle && !hasNotes) {
+  if (!hasGoal && !hasPlatform && !hasCtaStyle && !hasToneOverride && !hasNotes) {
     return { error: "No campaign context fields provided." } as const;
   }
 
@@ -82,6 +90,7 @@ function readUpdateCampaignContext(body: Record<string, unknown>) {
     goal?: string;
     platform?: string;
     ctaStyle?: string;
+    toneOverride?: string;
     notes?: string;
   } = {};
 
@@ -105,6 +114,13 @@ function readUpdateCampaignContext(body: Record<string, unknown>) {
     patch.ctaStyle = trimAndClamp(body.ctaStyle, 30);
     if (patch.ctaStyle.length === 1) {
       return { error: "CTA style must be 2-30 characters." } as const;
+    }
+  }
+
+  if (hasToneOverride) {
+    patch.toneOverride = trimAndClamp(body.toneOverride, 60);
+    if (patch.toneOverride.length === 1) {
+      return { error: "Tone override must be 2-60 characters." } as const;
     }
   }
 
@@ -395,6 +411,9 @@ export async function POST(
           goal: contextResult.data.goal,
           platform: contextResult.data.platform,
           ...(contextResult.data.ctaStyle ? { ctaStyle: contextResult.data.ctaStyle } : {}),
+          ...(contextResult.data.toneOverride
+            ? { toneOverride: contextResult.data.toneOverride }
+            : {}),
           ...(contextResult.data.notes ? { notes: contextResult.data.notes } : {}),
           createdAt: nowIso,
           updatedAt: nowIso,
@@ -456,6 +475,14 @@ export async function POST(
             nextCampaign.ctaStyle = patchResult.data.ctaStyle;
           } else {
             delete nextCampaign.ctaStyle;
+          }
+        }
+
+        if (patchResult.data.toneOverride !== undefined) {
+          if (patchResult.data.toneOverride) {
+            nextCampaign.toneOverride = patchResult.data.toneOverride;
+          } else {
+            delete nextCampaign.toneOverride;
           }
         }
 
@@ -526,6 +553,7 @@ export async function POST(
         goal: selectedCampaign.goal,
         platform: selectedCampaign.platform,
         ctaStyle: selectedCampaign.ctaStyle,
+        toneOverride: selectedCampaign.toneOverride,
         notes: selectedCampaign.notes,
       },
       goal,
@@ -557,6 +585,13 @@ export async function POST(
           profile.tone && typeof profile.tone === "object" && !Array.isArray(profile.tone)
             ? profile.tone
             : undefined,
+        constraints: {
+          formality: constraints.formality,
+          humor: constraints.humor,
+          intensity: constraints.intensity,
+          allowWords: normalizeWordList(constraints.allowWords),
+          avoidWords,
+        },
       },
       constraints: {
         formality: constraints.formality,

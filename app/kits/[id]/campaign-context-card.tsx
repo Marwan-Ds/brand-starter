@@ -9,6 +9,7 @@ type CampaignContext = {
   goal: string;
   platform: string;
   ctaStyle?: string;
+  toneOverride?: string;
   notes?: string;
 };
 
@@ -24,6 +25,7 @@ export function CampaignContextCard({
   const [goal, setGoal] = useState(initialContext.goal);
   const [platform, setPlatform] = useState(initialContext.platform);
   const [ctaStyle, setCtaStyle] = useState(initialContext.ctaStyle ?? "");
+  const [toneOverride, setToneOverride] = useState(initialContext.toneOverride ?? "");
   const [notes, setNotes] = useState(initialContext.notes ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -51,6 +53,7 @@ export function CampaignContextCard({
           goal: goal.trim(),
           platform: platform.trim(),
           ctaStyle: ctaStyle.trim(),
+          toneOverride: toneOverride.trim(),
           notes: notes.trim(),
         }),
       });
@@ -76,6 +79,7 @@ export function CampaignContextCard({
     setGoal(initialContext.goal);
     setPlatform(initialContext.platform);
     setCtaStyle(initialContext.ctaStyle ?? "");
+    setToneOverride(initialContext.toneOverride ?? "");
     setNotes(initialContext.notes ?? "");
     setErrorMsg("");
     setSaved(false);
@@ -147,6 +151,15 @@ export function CampaignContextCard({
               className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
             />
           </label>
+          <label className="block">
+            <span className="text-xs text-zinc-500">Tone override (optional)</span>
+            <input
+              value={toneOverride}
+              onChange={(event) => setToneOverride(event.target.value)}
+              maxLength={60}
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+            />
+          </label>
           <label className="block sm:col-span-2">
             <span className="text-xs text-zinc-500">Notes (optional)</span>
             <textarea
@@ -171,6 +184,10 @@ export function CampaignContextCard({
           <div>
             <dt className="text-zinc-500">CTA style</dt>
             <dd className="text-zinc-100">{initialContext.ctaStyle || "Not set"}</dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500">Tone override</dt>
+            <dd className="text-zinc-100">{initialContext.toneOverride || "Not set"}</dd>
           </div>
           <div>
             <dt className="text-zinc-500">Notes</dt>

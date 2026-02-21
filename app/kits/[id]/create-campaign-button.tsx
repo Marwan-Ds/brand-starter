@@ -37,6 +37,7 @@ export function CreateCampaignButton({
   const [goal, setGoal] = useState<(typeof GOAL_OPTIONS)[number]>("Awareness");
   const [platform, setPlatform] = useState<(typeof PLATFORM_OPTIONS)[number]>("Instagram");
   const [ctaStyle, setCtaStyle] = useState("");
+  const [toneOverride, setToneOverride] = useState("");
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -46,6 +47,7 @@ export function CreateCampaignButton({
     const trimmedGoal = goal.trim();
     const trimmedPlatform = platform.trim();
     const trimmedCtaStyle = ctaStyle.trim();
+    const trimmedToneOverride = toneOverride.trim();
     const trimmedNotes = notes.trim();
 
     if (trimmedName.length < 2 || trimmedName.length > 60) {
@@ -68,6 +70,14 @@ export function CreateCampaignButton({
       return;
     }
 
+    if (
+      trimmedToneOverride &&
+      (trimmedToneOverride.length < 2 || trimmedToneOverride.length > 60)
+    ) {
+      setErrorMsg("Tone override must be 2-60 characters.");
+      return;
+    }
+
     if (isSaving) return;
     setIsSaving(true);
     setErrorMsg("");
@@ -82,6 +92,7 @@ export function CreateCampaignButton({
           goal: trimmedGoal,
           platform: trimmedPlatform,
           ...(trimmedCtaStyle ? { ctaStyle: trimmedCtaStyle } : {}),
+          ...(trimmedToneOverride ? { toneOverride: trimmedToneOverride } : {}),
           ...(trimmedNotes ? { notes: trimmedNotes } : {}),
         }),
       });
@@ -106,6 +117,7 @@ export function CreateCampaignButton({
       setGoal("Awareness");
       setPlatform("Instagram");
       setCtaStyle("");
+      setToneOverride("");
       setNotes("");
       setIsSaving(false);
       setIsOpen(false);
@@ -183,6 +195,16 @@ export function CreateCampaignButton({
               value={ctaStyle}
               onChange={(event) => setCtaStyle(event.target.value)}
               maxLength={30}
+              className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+            />
+          </label>
+
+          <label className="mt-3 block">
+            <span className="text-xs text-zinc-500">Tone override (optional)</span>
+            <input
+              value={toneOverride}
+              onChange={(event) => setToneOverride(event.target.value)}
+              maxLength={60}
               className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
             />
           </label>
